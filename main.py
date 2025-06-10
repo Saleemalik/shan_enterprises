@@ -2,6 +2,8 @@ import sqlite3
 from tkinter import *
 from ui.dealers import DealerManager
 from ui.workorders import WorkOrderRatePage
+from ui.destinations import DestinationPage
+
 
 # Initialize DB
 conn = sqlite3.connect("billing_app.db")
@@ -26,6 +28,16 @@ c.execute('''CREATE TABLE IF NOT EXISTS rate_range (
     is_mtk BOOLEAN DEFAULT 1
 )''')
 
+c.execute('''
+    CREATE TABLE IF NOT EXISTS destination (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        place TEXT,
+        description TEXT,
+        is_garage BOOLEAN DEFAULT 0
+    )
+''')
+
 conn.commit()
 
 # Main Dashboard Window
@@ -37,6 +49,7 @@ root.geometry("800x500")
 main_frame = Frame(root)
 dealer_frame = Frame(root)
 workorder_frame = Frame(root)
+destination_frame = Frame(root)
 
 for frame in (main_frame, dealer_frame):
     frame.place(x=0, y=0, width=800, height=500)
@@ -44,10 +57,15 @@ for frame in (main_frame, dealer_frame):
 for frame in (main_frame, workorder_frame):
     frame.place(x=0, y=0, width=800, height=500)
 
+for frame in (main_frame, destination_frame):
+    frame.place(x=0, y=0, width=800, height=500)
+
+
 # Dashboard Frame
 Label(main_frame, text="Billing Application", font=("Arial", 18)).pack(pady=20)
 Button(main_frame, text="Manage Dealers", width=25, command=lambda: show_frame(dealer_frame)).pack(pady=10)
 Button(main_frame, text="Manage Work Order Rates", width=25, command=lambda: show_frame(workorder_frame)).pack(pady=10)
+Button(main_frame, text="Manage Destinations", width=25, command=lambda: show_frame(destination_frame)).pack(pady=10)
 Button(main_frame, text="Create Sub Bills", width=25, command=lambda: print("Coming soon...")).pack(pady=10)
 Button(main_frame, text="Create Main Bills", width=25, command=lambda: print("Coming soon...")).pack(pady=10)
 
@@ -57,6 +75,8 @@ DealerManager(dealer_frame, main_frame, conn)
 # Load work order rate Page UI into Frame
 WorkOrderRatePage(workorder_frame, main_frame, conn)
 
+# Load Destination Page UI into Frame
+DestinationPage(destination_frame, main_frame, conn)
 
 
 def show_frame(frame):
