@@ -49,10 +49,37 @@ class DestinationEntryPage:
         )''')
 
         self.build_ui()
+        
+    def refresh(self):
+        # Clear range frames
+        for rf in self.range_frames:
+            rf.destroy()
+        self.range_frames.clear()
+        self.used_ranges.clear()
+
+        # Clear form fields
+        self.letter_note_entry.delete(0, END)
+        self.bill_number_entry.delete(0, END)
+        self.date_entry.delete(0, END)
+        self.date_entry.insert(0, datetime.now().strftime("%Y-%m-%d"))
+        self.to_address_entry.delete(0, END)
+
+        # Reload destination combobox
+        self.load_destinations()
+        self.destination_cb.set('')
 
     def build_ui(self):
-        Button(self.frame, text="← Back to Dashboard", command=lambda: self.home_frame.tkraise()).pack(anchor='nw', padx=10, pady=5)
-        Label(self.frame, text="Destination Entry Form", font=("Arial", 16)).pack(pady=10)
+        top_row = Frame(self.frame)
+        top_row.pack(fill='x', padx=10, pady=5)
+
+        # ← Back button
+        Button(top_row, text="← Back to Dashboard", command=lambda: self.home_frame.tkraise()).pack(side='left', pady=10)
+
+        # Title centered
+        Label(top_row, text="Destination Entry Form", font=("Arial", 16)).pack(side='left', expand=True, pady=10)
+
+        # ⟳ Refresh Switch/Toggle Button
+        Button(top_row, text="⟳ Refresh", command=self.refresh).pack(side='right', pady=10)
 
         form = Frame(self.frame)
         form.pack(pady=10)
@@ -158,8 +185,15 @@ class DestinationEntryPage:
         # Dealer list container
         dealer_frame = Frame(frame)
         dealer_frame.grid(row=4, column=0, columnspan=4, sticky="w")
+        selected_dest = self.destination_cb.get()
+        destination_id = self.destination_map.get(selected_dest)
 
-        self.c.execute("SELECT id, name, distance FROM dealer WHERE distance BETWEEN ? AND ?", (from_km, to_km))
+        self.c.execute("""
+            SELECT id, name, distance FROM dealer
+            WHERE distance BETWEEN ? AND ?
+            AND destination_id = ?
+        """, (from_km, to_km, destination_id))
+
         dealers = self.c.fetchall()
         dealer_map = {f"{id} - {name} ({distance}km)": (id, distance) for id, name, distance in dealers}
 
@@ -186,7 +220,6 @@ class DestinationEntryPage:
             dealer_cb.grid(row=row_idx, column=0, padx=2, pady=2)
             row['dealer_cb'] = dealer_cb
 
-            # Autocomplete filtering logic
             def filter_dealers(event):
                 typed = dealer_var.get().lower()
                 filtered = [k for k in dealer_map.keys() if typed in k.lower()]
@@ -195,7 +228,6 @@ class DestinationEntryPage:
                     dealer_cb.event_generate('<Down>')
 
             dealer_cb.bind('<KeyRelease>', filter_dealers)
-
 
             bags_entry = Entry(dealer_frame, width=5)
             bags_entry.grid(row=row_idx, column=1, padx=2)
@@ -210,19 +242,16 @@ class DestinationEntryPage:
                 if not selected or selected not in dealer_map:
                     result_lbl.config(text="Select valid dealer")
                     return
-                
+
+                # Prevent duplicate
                 for existing_row in dealer_rows:
                     if existing_row is row:
                         continue
                     if existing_row.get('dealer_cb') and existing_row['dealer_cb'].get() == selected:
                         result_lbl.config(text="Duplicate dealer")
                         return
-                dealer_info = dealer_map.get(dealer_cb.get())
-                
-                if not dealer_info:
-                    result_lbl.config(text="Select dealer")
-                    return
-                dealer_id, km = dealer_info
+
+                dealer_id, km = dealer_map[selected]
                 try:
                     bags = int(bags_entry.get())
                     mt = bags * 0.05
@@ -241,7 +270,18 @@ class DestinationEntryPage:
                 except ValueError:
                     result_lbl.config(text="Invalid input")
 
-            Button(dealer_frame, text="Calc", command=calculate_row).grid(row=row_idx, column=3)
+            # ❌ Remove button
+            def remove_dealer_row():
+                for widget in [dealer_cb, bags_entry, result_lbl, calc_btn, remove_btn]:
+                    widget.destroy()
+                dealer_rows.remove(row)
+                update_totals()
+
+            calc_btn = Button(dealer_frame, text="Calc", command=calculate_row)
+            calc_btn.grid(row=row_idx, column=3)
+
+            remove_btn = Button(dealer_frame, text="❌", command=remove_dealer_row)
+            remove_btn.grid(row=row_idx, column=4)
 
             dealer_rows.append(row)
 
