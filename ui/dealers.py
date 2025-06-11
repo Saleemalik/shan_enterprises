@@ -1,6 +1,7 @@
 from tkinter import *
 from tkinter import messagebox
-from tkinter.ttk import Treeview
+from tkinter.ttk import Treeview, Combobox
+from datetime import datetime
 
 class DealerManager:
     def __init__(self, master_frame, home_frame, conn):
@@ -26,16 +27,29 @@ class DealerManager:
             entry = Entry(self.form)
             entry.grid(row=i, column=1)
             self.entries[label.lower()] = entry
+        
+        # Add Destination field
+        Label(self.form, text="Destination").grid(row=6, column=0)
+        self.destination_cb = Combobox(self.form, state="readonly")
+        self.destination_cb.grid(row=6, column=1)
+        
+        # Load destination options
+        self.cursor.execute("SELECT id, name FROM destination")
+        dest_rows = self.cursor.fetchall()
+        self.destination_map = {f"{id} - {name}": id for id, name in dest_rows}
+        self.destination_cb['values'] = list(self.destination_map.keys())
 
-        Button(self.form, text="Add Dealer", command=self.add_dealer).grid(row=6, column=0, pady=10)
-        Button(self.form, text="Update Dealer", command=self.update_dealer).grid(row=6, column=1, pady=10)
-        Button(self.form, text="Delete Dealer", command=self.delete_dealer).grid(row=6, column=2, pady=10)
+
+        Button(self.form, text="Add Dealer", command=self.add_dealer).grid(row=7, column=0, pady=10)
+        Button(self.form, text="Update Dealer", command=self.update_dealer).grid(row=7, column=1, pady=10)
+        Button(self.form, text="Delete Dealer", command=self.delete_dealer).grid(row=7, column=2, pady=10)
 
         self.dealer_list = Treeview(
             self.master_frame,
-            columns=("ID", "Code", "Name", "Place", "Pincode", "Mobile", "Distance"),
+            columns=("ID", "Code", "Name", "Place", "Pincode", "Mobile", "Distance", "Destination"),
             show="headings"
         )
+
         for col in self.dealer_list["columns"]:
             self.dealer_list.heading(col, text=col)
             self.dealer_list.column(col, width=100)
@@ -56,7 +70,12 @@ class DealerManager:
         for row in self.dealer_list.get_children():
             self.dealer_list.delete(row)
 
-        self.cursor.execute("SELECT id, code, name, place, pincode, mobile, distance FROM dealer")
+        self.cursor.execute("""
+            SELECT dealer.id, dealer.code, dealer.name, dealer.place, dealer.pincode, dealer.mobile,
+                dealer.distance, destination.name
+            FROM dealer
+            LEFT JOIN destination ON dealer.destination_id = destination.id
+        """)
         for row in self.cursor.fetchall():
             self.dealer_list.insert("", END, values=row)
 
@@ -77,15 +96,17 @@ class DealerManager:
         pincode = self.get_entry("pincode")
         mobile = self.get_entry("mobile")
         distance = self.get_entry("distance")
+        dest_val = self.destination_cb.get()
+        destination_id = self.destination_map.get(dest_val)
 
-        if not code or not name:
-            messagebox.showerror("Input Error", "Code and Name are required")
+        if not code or not name or not destination_id:
+            messagebox.showerror("Input Error", "Code, Name, and Destination are required")
             return
 
         try:
             self.cursor.execute(
-                "INSERT INTO dealer (code, name, place, pincode, mobile, distance) VALUES (?, ?, ?, ?, ?, ?)",
-                (code, name, place, pincode, mobile, float(distance))
+                "INSERT INTO dealer (code, name, place, pincode, mobile, distance, destination_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (code, name, place, pincode, mobile, float(distance), destination_id)
             )
             self.conn.commit()
             self.load_dealers()
@@ -94,15 +115,19 @@ class DealerManager:
         except Exception as e:
             messagebox.showerror("Database Error", str(e))
 
+
     def update_dealer(self):
         selected = self.dealer_list.focus()
         if not selected:
             messagebox.showerror("Selection Error", "Please select a dealer to update")
             return
+
         dealer_id = self.dealer_list.item(selected, 'values')[0]
+        destination_id = self.destination_map.get(self.destination_cb.get())
+
         try:
             self.cursor.execute(
-                "UPDATE dealer SET code=?, name=?, place=?, pincode=?, mobile=?, distance=? WHERE id=?",
+                "UPDATE dealer SET code=?, name=?, place=?, pincode=?, mobile=?, distance=?, destination_id=? WHERE id=?",
                 (
                     self.get_entry("code"),
                     self.get_entry("name"),
@@ -110,6 +135,7 @@ class DealerManager:
                     self.get_entry("pincode"),
                     self.get_entry("mobile"),
                     float(self.get_entry("distance")),
+                    destination_id,
                     dealer_id
                 )
             )

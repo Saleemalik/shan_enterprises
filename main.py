@@ -19,6 +19,8 @@ c.execute('''CREATE TABLE IF NOT EXISTS dealer (
     pincode TEXT,
     mobile TEXT,
     distance REAL
+    destination_id INTEGER,
+    FOREIGN KEY (destination_id) REFERENCES destination(id)
 )''')
 
 c.execute('''CREATE TABLE IF NOT EXISTS rate_range (
