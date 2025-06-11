@@ -39,10 +39,10 @@ c.execute('''CREATE TABLE IF NOT EXISTS destination (
 
 conn.commit()
 
-# Root Window Fullscreen
+# Root Window
 root = Tk()
 root.title("Billing App")
-root.geometry('900x800') # Fullscreen on Windows
+root.geometry('900x800')  # Initial size
 
 # Canvas + Scrollbar
 main_canvas = Canvas(root)
@@ -67,13 +67,19 @@ destination_entry_frame = Frame(scrollable_frame)
 for frame in (main_frame, dealer_frame, workorder_frame, destination_frame, destination_entry_frame):
     frame.grid(row=0, column=0, sticky='nsew')
 
-# Navigation
-Label(main_frame, text="Billing Dashboard", font=("Arial", 18)).pack(pady=20)
-Button(main_frame, text="Manage Dealers", command=lambda: show_frame(dealer_frame)).pack(pady=5)
-Button(main_frame, text="Manage Work Order Rates", command=lambda: show_frame(workorder_frame)).pack(pady=5)
-Button(main_frame, text="Manage Destinations", command=lambda: show_frame(destination_frame)).pack(pady=5)
-Button(main_frame, text="Destination Entries", command=lambda: show_frame(destination_entry_frame)).pack(pady=5)
-Button(main_frame, text="Create Main Bills", command=lambda: print("Coming soon...")).pack(pady=5)
+# Configure main_frame to center its contents
+main_frame.grid_rowconfigure(0, weight=1)  # Add weight to center vertically
+main_frame.grid_rowconfigure(7, weight=1)  # Extra row for spacing
+main_frame.grid_columnconfigure(0, weight=1)  # Add weight to center horizontally
+main_frame.grid_columnconfigure(2, weight=1)  # Extra column for spacing
+
+# Navigation (Centered in main_frame using grid)
+Label(main_frame, text="Billing Dashboard", font=("Arial", 18)).grid(row=1, column=1, pady=20, sticky="ew")
+Button(main_frame, text="Manage Dealers", command=lambda: show_frame(dealer_frame)).grid(row=2, column=1, pady=5, sticky="ew")
+Button(main_frame, text="Manage Work Order Rates", command=lambda: show_frame(workorder_frame)).grid(row=3, column=1, pady=5, sticky="ew")
+Button(main_frame, text="Manage Destinations", command=lambda: show_frame(destination_frame)).grid(row=4, column=1, pady=5, sticky="ew")
+Button(main_frame, text="Destination Entries", command=lambda: show_frame(destination_entry_frame)).grid(row=5, column=1, pady=5, sticky="ew")
+Button(main_frame, text="Create Main Bills", command=lambda: print("Coming soon...")).grid(row=6, column=1, pady=5, sticky="ew")
 
 # Load Pages
 DealerManager(dealer_frame, main_frame, conn)
