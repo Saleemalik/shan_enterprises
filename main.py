@@ -1,17 +1,16 @@
 import sqlite3
 from tkinter import *
+from tkinter import ttk
 from ui.dealers import DealerManager
 from ui.workorders import WorkOrderRatePage
 from ui.destinations import DestinationPage
-from ui.sub_bills import SubBillManagementPage 
 from ui.destination_entries import DestinationEntryPage
 
-
-# Initialize DB
+# DB setup
 conn = sqlite3.connect("billing_app.db")
 c = conn.cursor()
 
-# Create Tables
+# Tables
 c.execute('''CREATE TABLE IF NOT EXISTS dealer (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT UNIQUE,
@@ -30,66 +29,60 @@ c.execute('''CREATE TABLE IF NOT EXISTS rate_range (
     is_mtk BOOLEAN DEFAULT 1
 )''')
 
-c.execute('''
-    CREATE TABLE IF NOT EXISTS destination (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        place TEXT,
-        description TEXT,
-        is_garage BOOLEAN DEFAULT 0
-    )
-''')
+c.execute('''CREATE TABLE IF NOT EXISTS destination (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    place TEXT,
+    description TEXT,
+    is_garage BOOLEAN DEFAULT 0
+)''')
 
 conn.commit()
 
-# Main Dashboard Window
+# Root Window Fullscreen
 root = Tk()
-root.title("Billing App Dashboard")
-root.geometry("2000x1000")
+root.title("Billing App")
+root.geometry('900x800') # Fullscreen on Windows
 
-# Frame Containers
-main_frame = Frame(root)
-dealer_frame = Frame(root)
-workorder_frame = Frame(root)
-destination_frame = Frame(root)
-destination_entry_frame = Frame(root)
+# Canvas + Scrollbar
+main_canvas = Canvas(root)
+main_canvas.pack(side=LEFT, fill=BOTH, expand=True)
 
-for frame in (main_frame, dealer_frame):
-    frame.place(x=0, y=0, width=1500, height=1000)
+v_scrollbar = Scrollbar(root, orient=VERTICAL, command=main_canvas.yview)
+v_scrollbar.pack(side=RIGHT, fill=Y)
 
-for frame in (main_frame, workorder_frame):
-    frame.place(x=0, y=0, width=1500, height=1000)
+main_canvas.configure(yscrollcommand=v_scrollbar.set)
+main_canvas.bind('<Configure>', lambda e: main_canvas.configure(scrollregion=main_canvas.bbox("all")))
 
-for frame in (main_frame, destination_frame):
-    frame.place(x=0, y=0, width=1500, height=1000)
-    
-for frame in (main_frame, destination_entry_frame):
-    frame.place(x=0, y=0, width=1500, height=1000)
+scrollable_frame = Frame(main_canvas)
+main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
 
+# Frames
+main_frame = Frame(scrollable_frame)
+dealer_frame = Frame(scrollable_frame)
+workorder_frame = Frame(scrollable_frame)
+destination_frame = Frame(scrollable_frame)
+destination_entry_frame = Frame(scrollable_frame)
 
-# Dashboard Frame
-Label(main_frame, text="Billing Application", font=("Arial", 18)).pack(pady=20)
-Button(main_frame, text="Manage Dealers", width=25, command=lambda: show_frame(dealer_frame)).pack(pady=10)
-Button(main_frame, text="Manage Work Order Rates", width=25, command=lambda: show_frame(workorder_frame)).pack(pady=10)
-Button(main_frame, text="Manage Destinations", width=25, command=lambda: show_frame(destination_frame)).pack(pady=10)
-Button(main_frame, text="Destination Entries", width=25, command=lambda: show_frame(destination_entry_frame)).pack(pady=10)
-Button(main_frame, text="Create Main Bills", width=25, command=lambda: print("Coming soon...")).pack(pady=10)
+for frame in (main_frame, dealer_frame, workorder_frame, destination_frame, destination_entry_frame):
+    frame.grid(row=0, column=0, sticky='nsew')
 
-# Load Dealer Page UI into Frame
+# Navigation
+Label(main_frame, text="Billing Dashboard", font=("Arial", 18)).pack(pady=20)
+Button(main_frame, text="Manage Dealers", command=lambda: show_frame(dealer_frame)).pack(pady=5)
+Button(main_frame, text="Manage Work Order Rates", command=lambda: show_frame(workorder_frame)).pack(pady=5)
+Button(main_frame, text="Manage Destinations", command=lambda: show_frame(destination_frame)).pack(pady=5)
+Button(main_frame, text="Destination Entries", command=lambda: show_frame(destination_entry_frame)).pack(pady=5)
+Button(main_frame, text="Create Main Bills", command=lambda: print("Coming soon...")).pack(pady=5)
+
+# Load Pages
 DealerManager(dealer_frame, main_frame, conn)
-
-# Load work order rate Page UI into Frame
 WorkOrderRatePage(workorder_frame, main_frame, conn)
-
-# Load Destination Page UI into Frame
 DestinationPage(destination_frame, main_frame, conn)
-
-# Load Destination Entry Page UI into Frame
 DestinationEntryPage(destination_entry_frame, main_frame, conn)
 
-
+# Frame switch
 def show_frame(frame):
-    print(f"Switching to frame: {frame}")
     frame.tkraise()
 
 show_frame(main_frame)
