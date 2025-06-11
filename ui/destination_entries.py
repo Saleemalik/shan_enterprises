@@ -111,6 +111,14 @@ class DestinationEntryPage:
         ranges = self.c.fetchall()
         return [f"{id} | {from_km}-{to_km}km @ ₹{rate} ({'MTK' if is_mtk else 'MT'})" 
                 for id, from_km, to_km, rate, is_mtk in ranges if id not in self.used_ranges]
+        
+    def remove_range(self, frame, rate_range_id):
+        confirm = messagebox.askyesno("Confirm", "Remove this range and all its dealer entries?")
+        if confirm:
+            self.used_ranges.discard(rate_range_id)
+            frame.destroy()
+            self.range_frames.remove(frame)
+
 
     def setup_range(self, frame, range_cb):
         val = range_cb.get()
@@ -121,17 +129,20 @@ class DestinationEntryPage:
         self.used_ranges.add(rate_range_id)
 
         self.c.execute("SELECT from_km, to_km, rate, is_mtk FROM rate_range WHERE id=?", (rate_range_id,))
-        range_info = self.c.fetchone()
-        from_km, to_km, rate, is_mtk = range_info
+        from_km, to_km, rate, is_mtk = self.c.fetchone()
 
         range_label = f"Range: {from_km} – {to_km} km | Rate: ₹{rate} | {'MTK' if is_mtk else 'MT'}"
 
+        # Clear previous selector widgets
         range_cb.grid_remove()
         for widget in frame.grid_slaves():
             if isinstance(widget, Button):
                 widget.grid_remove()
 
-        Label(frame, text=range_label).grid(row=0, column=0, columnspan=3, pady=5)
+        Label(frame, text=range_label).grid(row=0, column=0, columnspan=3, pady=5, sticky='w')
+
+        # Remove range button
+        Button(frame, text="Remove This Range", command=lambda: self.remove_range(frame, rate_range_id)).grid(row=0, column=3, sticky='e')
 
         Label(frame, text="MDA No.").grid(row=1, column=0)
         mda_entry = Entry(frame)
@@ -142,35 +153,105 @@ class DestinationEntryPage:
         date_entry.insert(0, datetime.now().strftime("%Y-%m-%d"))
         date_entry.grid(row=2, column=1)
 
-        # Dealer section
-        Label(frame, text="Select Dealer").grid(row=3, column=0)
-        dealer_cb = ttk.Combobox(frame, state="readonly")
-        dealer_cb.grid(row=3, column=1)
+        Label(frame, text="Dealers for this range", font=("Arial", 10, "bold")).grid(row=3, column=0, columnspan=3, pady=(10, 0))
+
+        # Dealer list container
+        dealer_frame = Frame(frame)
+        dealer_frame.grid(row=4, column=0, columnspan=4, sticky="w")
 
         self.c.execute("SELECT id, name, distance FROM dealer WHERE distance BETWEEN ? AND ?", (from_km, to_km))
         dealers = self.c.fetchall()
         dealer_map = {f"{id} - {name} ({distance}km)": (id, distance) for id, name, distance in dealers}
-        dealer_cb['values'] = list(dealer_map.keys())
 
-        Label(frame, text="No. of Bags").grid(row=4, column=0)
-        bags_entry = Entry(frame)
-        bags_entry.grid(row=4, column=1)
+        dealer_rows = []
 
-        result_label = Label(frame, text="")
-        result_label.grid(row=5, column=0, columnspan=3, pady=5)
+        totals_label = Label(frame, text="Total Bags: 0 | MT: 0.00 | MTK: 0.00 | ₹0.00", font=("Arial", 10, "bold"), fg="green")
+        totals_label.grid(row=6, column=0, columnspan=4, pady=5)
 
-        def calculate():
-            dealer_info = dealer_map.get(dealer_cb.get())
-            if not dealer_info:
-                return
-            dealer_id, km = dealer_info
-            try:
-                bags = int(bags_entry.get())
-                mt = bags * 0.05
-                mtk = mt * km
-                amount = rate * (mtk if is_mtk else mt)
-                result_label.config(text=f"MT: {mt:.2f}, KM: {km}, MTK: {mtk:.2f}, Amount: ₹{amount:.2f}")
-            except ValueError:
-                result_label.config(text="Invalid input")
+        def update_totals():
+            total_bags = sum(row.get('bags', 0) for row in dealer_rows)
+            total_mt = sum(row.get('mt', 0.0) for row in dealer_rows)
+            total_mtk = sum(row.get('mtk', 0.0) for row in dealer_rows)
+            total_amt = sum(row.get('amount', 0.0) for row in dealer_rows)
+            totals_label.config(
+                text=f"Total Bags: {total_bags} | MT: {total_mt:.2f} | MTK: {total_mtk:.2f} | ₹{total_amt:.2f}"
+            )
 
-        Button(frame, text="Calculate", command=calculate).grid(row=4, column=2, padx=5)
+        def add_dealer_row():
+            row_idx = len(dealer_rows)
+            row = {}
+
+            dealer_var = StringVar()
+            dealer_cb = ttk.Combobox(dealer_frame, textvariable=dealer_var, values=list(dealer_map.keys()), state="normal", width=30)
+            dealer_cb.grid(row=row_idx, column=0, padx=2, pady=2)
+            row['dealer_cb'] = dealer_cb
+
+            # Autocomplete filtering logic
+            def filter_dealers(event):
+                typed = dealer_var.get().lower()
+                filtered = [k for k in dealer_map.keys() if typed in k.lower()]
+                dealer_cb['values'] = filtered
+                if filtered:
+                    dealer_cb.event_generate('<Down>')
+
+            dealer_cb.bind('<KeyRelease>', filter_dealers)
+
+
+            bags_entry = Entry(dealer_frame, width=5)
+            bags_entry.grid(row=row_idx, column=1, padx=2)
+            row['bags_entry'] = bags_entry
+
+            result_lbl = Label(dealer_frame, text="", width=40, anchor='w')
+            result_lbl.grid(row=row_idx, column=2, padx=2)
+            row['result_lbl'] = result_lbl
+
+            def calculate_row():
+                selected = dealer_cb.get()
+                if not selected or selected not in dealer_map:
+                    result_lbl.config(text="Select valid dealer")
+                    return
+                
+                for existing_row in dealer_rows:
+                    if existing_row is row:
+                        continue
+                    if existing_row.get('dealer_cb') and existing_row['dealer_cb'].get() == selected:
+                        result_lbl.config(text="Duplicate dealer")
+                        return
+                dealer_info = dealer_map.get(dealer_cb.get())
+                
+                if not dealer_info:
+                    result_lbl.config(text="Select dealer")
+                    return
+                dealer_id, km = dealer_info
+                try:
+                    bags = int(bags_entry.get())
+                    mt = bags * 0.05
+                    mtk = mt * km
+                    amount = rate * (mtk if is_mtk else mt)
+                    result_lbl.config(text=f"MT: {mt:.2f} | KM: {km} | MTK: {mtk:.2f} | ₹{amount:.2f}")
+                    row.update({
+                        'dealer_id': dealer_id,
+                        'km': km,
+                        'bags': bags,
+                        'mt': mt,
+                        'mtk': mtk,
+                        'amount': amount
+                    })
+                    update_totals()
+                except ValueError:
+                    result_lbl.config(text="Invalid input")
+
+            Button(dealer_frame, text="Calc", command=calculate_row).grid(row=row_idx, column=3)
+
+            dealer_rows.append(row)
+
+        Button(frame, text="+ Add Dealer", command=add_dealer_row).grid(row=5, column=0, columnspan=2, pady=5)
+        add_dealer_row()
+
+        # Save for future use (e.g. DB save)
+        frame.rate_range_id = rate_range_id
+        frame.dealer_rows = dealer_rows
+        frame.update_totals = update_totals
+        frame.mda_entry = mda_entry
+        frame.date_entry = date_entry
+        self.range_frames.append(frame)
