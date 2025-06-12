@@ -5,6 +5,7 @@ from ui.dealers import DealerManager
 from ui.workorders import WorkOrderRatePage
 from ui.destinations import DestinationPage
 from ui.destination_entries import DestinationEntryPage
+from ui.destinationentryview import DestinationEntryViewer
 
 # DB setup
 conn = sqlite3.connect("billing_app.db")
@@ -44,7 +45,7 @@ conn.commit()
 # Root Window
 root = Tk()
 root.title("Billing App")
-root.geometry('900x800')  # Initial size
+root.geometry('1600x1000')  # Initial size
 
 # Canvas + Scrollbar
 main_canvas = Canvas(root)
@@ -65,8 +66,9 @@ dealer_frame = Frame(scrollable_frame)
 workorder_frame = Frame(scrollable_frame)
 destination_frame = Frame(scrollable_frame)
 destination_entry_frame = Frame(scrollable_frame)
+destination_entry_viewer_frame = Frame(scrollable_frame)
 
-for frame in (main_frame, dealer_frame, workorder_frame, destination_frame, destination_entry_frame):
+for frame in (main_frame, dealer_frame, workorder_frame, destination_frame, destination_entry_frame, destination_entry_viewer_frame):
     frame.grid(row=0, column=0, sticky='nsew')
 
 # Configure main_frame to center its contents
@@ -81,13 +83,15 @@ Button(main_frame, text="Manage Dealers", command=lambda: show_frame(dealer_fram
 Button(main_frame, text="Manage Work Order Rates", command=lambda: show_frame(workorder_frame)).grid(row=3, column=1, pady=5, sticky="ew")
 Button(main_frame, text="Manage Destinations", command=lambda: show_frame(destination_frame)).grid(row=4, column=1, pady=5, sticky="ew")
 Button(main_frame, text="Destination Entries", command=lambda: show_frame(destination_entry_frame)).grid(row=5, column=1, pady=5, sticky="ew")
-Button(main_frame, text="Create Main Bills", command=lambda: print("Coming soon...")).grid(row=6, column=1, pady=5, sticky="ew")
+Button(main_frame, text="View Destination Entries", command=lambda: show_frame(destination_entry_viewer_frame)).grid(row=6, column=1, pady=5, sticky="ew")
+Button(main_frame, text="Create Main Bills", command=lambda: print("Coming soon...")).grid(row=7, column=1, pady=5, sticky="ew")
 
 # Load Pages
 DealerManager(dealer_frame, main_frame, conn)
 WorkOrderRatePage(workorder_frame, main_frame, conn)
 DestinationPage(destination_frame, main_frame, conn)
 DestinationEntryPage(destination_entry_frame, main_frame, conn)
+DestinationEntryViewer(destination_entry_viewer_frame, main_frame, conn)
 
 # Frame switch
 def show_frame(frame):
