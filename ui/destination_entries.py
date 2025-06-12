@@ -58,11 +58,11 @@ class DestinationEntryPage:
         self.used_ranges.clear()
 
         # Clear form fields
-        self.letter_note_text.delete(0, END)
+        self.letter_note_text.delete("1.0", END)
         self.bill_number_entry.delete(0, END)
         self.date_entry.delete(0, END)
         self.date_entry.insert(0, datetime.now().strftime("%Y-%m-%d"))
-        self.to_address_text.delete(0, END)
+        self.to_address_text.delete("1.0", END)
 
         # Reload destination combobox
         self.load_destinations()
@@ -111,6 +111,77 @@ class DestinationEntryPage:
         self.range_container.pack(fill='both', expand=True)
 
         self.load_destinations()
+        Button(self.frame, text="💾 Save Entry", font=("Arial", 12), command=self.save_entries).pack(pady=10)
+        
+    def save_entries(self):
+        selected_dest = self.destination_cb.get()
+        if not selected_dest:
+            messagebox.showerror("Error", "Please select a destination.")
+            return
+
+        destination_id = self.destination_map[selected_dest]
+        letter_note = self.letter_note_text.get("1.0", END).strip()
+        bill_number = self.bill_number_entry.get().strip()
+        date = self.date_entry.get().strip()
+        to_address = self.to_address_text.get("1.0", END).strip()
+
+        if not bill_number:
+            messagebox.showerror("Error", "Bill number is required.")
+            return
+
+        try:
+            # Insert into destination_entry
+            self.c.execute("""
+                INSERT INTO destination_entry (destination_id, letter_note, bill_number, date, to_address)
+                VALUES (?, ?, ?, ?, ?)
+            """, (destination_id, letter_note, bill_number, date, to_address))
+            destination_entry_id = self.c.lastrowid
+
+            # Insert each range_entry and related dealer_entry rows
+            for frame in self.range_frames:
+                rate_range_id = frame.rate_range_id
+                dealer_rows = frame.dealer_rows
+
+                total_bags = sum(row.get('bags', 0) for row in dealer_rows)
+                total_mt = sum(row.get('mt', 0.0) for row in dealer_rows)
+                total_mtk = sum(row.get('mtk', 0.0) for row in dealer_rows)
+                total_amount = sum(row.get('amount', 0.0) for row in dealer_rows)
+
+                # Insert into range_entry
+                self.c.execute("""
+                    INSERT INTO range_entry (
+                        destination_entry_id, rate_range_id, total_bags,
+                        total_mt, total_mtk, total_amount
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    destination_entry_id, rate_range_id,
+                    total_bags, total_mt, total_mtk, total_amount
+                ))
+                range_entry_id = self.c.lastrowid
+
+                # Insert dealer_entry for each dealer
+                for row in dealer_rows:
+                    if 'dealer_id' not in row or 'bags' not in row:
+                        continue  # Skip incomplete rows
+
+                    self.c.execute("""
+                        INSERT INTO dealer_entry (
+                            range_entry_id, dealer_id, km, no_bags, rate,
+                            mt, mtk, amount
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        range_entry_id, row['dealer_id'], row['km'], row['bags'],
+                        frame.cget("text").split("@ ₹")[-1].split(" ")[0],  # Extract rate from label
+                        row['mt'], row['mtk'], row['amount']
+                    ))
+
+            self.conn.commit()
+            messagebox.showinfo("Success", "Destination Entry saved successfully.")
+
+        except Exception as e:
+            self.conn.rollback()
+            messagebox.showerror("Error", f"Failed to save entry:\n{e}")
+
 
     def load_destinations(self):
         self.c.execute("SELECT id, name FROM destination")
