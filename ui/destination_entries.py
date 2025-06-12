@@ -58,11 +58,11 @@ class DestinationEntryPage:
         self.used_ranges.clear()
 
         # Clear form fields
-        self.letter_note_entry.delete(0, END)
+        self.letter_note_text.delete(0, END)
         self.bill_number_entry.delete(0, END)
         self.date_entry.delete(0, END)
         self.date_entry.insert(0, datetime.now().strftime("%Y-%m-%d"))
-        self.to_address_entry.delete(0, END)
+        self.to_address_text.delete(0, END)
 
         # Reload destination combobox
         self.load_destinations()
@@ -89,8 +89,8 @@ class DestinationEntryPage:
         self.destination_cb.grid(row=0, column=1, padx=5)
 
         Label(form, text="Letter Note").grid(row=1, column=0)
-        self.letter_note_entry = Entry(form)
-        self.letter_note_entry.grid(row=1, column=1)
+        self.letter_note_text =  Text(form, height=3, width=40, pady=5)
+        self.letter_note_text.grid(row=1, column=1, pady=5)
 
         Label(form, text="Bill Number").grid(row=2, column=0)
         self.bill_number_entry = Entry(form)
@@ -101,9 +101,9 @@ class DestinationEntryPage:
         self.date_entry.insert(0, datetime.now().strftime("%Y-%m-%d"))
         self.date_entry.grid(row=3, column=1)
 
-        Label(form, text="To Address").grid(row=4, column=0)
-        self.to_address_entry = Entry(form)
-        self.to_address_entry.grid(row=4, column=1)
+        Label(form, text="To Address").grid(row=4, column=0, pady=5)
+        self.to_address_text = Text(form, height=2, width=40)
+        self.to_address_text.grid(row=4, column=1, pady=5)
 
         Button(form, text="+ Add Range", command=self.add_range_frame).grid(row=5, column=0, columnspan=2, pady=10)
 
@@ -243,13 +243,13 @@ class DestinationEntryPage:
                     result_lbl.config(text="Select valid dealer")
                     return
 
-                # Prevent duplicate
-                for existing_row in dealer_rows:
-                    if existing_row is row:
-                        continue
-                    if existing_row.get('dealer_cb') and existing_row['dealer_cb'].get() == selected:
-                        result_lbl.config(text="Duplicate dealer")
-                        return
+                # # Prevent duplicate
+                # for existing_row in dealer_rows:
+                #     if existing_row is row:
+                #         continue
+                #     if existing_row.get('dealer_cb') and existing_row['dealer_cb'].get() == selected:
+                #         result_lbl.config(text="Duplicate dealer")
+                #         return
 
                 dealer_id, km = dealer_map[selected]
                 try:
