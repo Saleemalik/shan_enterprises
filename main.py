@@ -6,6 +6,7 @@ from ui.workorders import WorkOrderRatePage
 from ui.destinations import DestinationPage
 from ui.destination_entries import DestinationEntryPage
 from ui.destinationentryview import DestinationEntryViewer
+from ui.editdestinationentry import EditDestinationEntryPage
 
 # DB setup
 conn = sqlite3.connect("billing_app.db")
@@ -40,6 +41,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS destination (
     is_garage BOOLEAN DEFAULT 0
 )''')
 
+
 conn.commit()
 
 # Root Window
@@ -67,8 +69,9 @@ workorder_frame = Frame(scrollable_frame)
 destination_frame = Frame(scrollable_frame)
 destination_entry_frame = Frame(scrollable_frame)
 destination_entry_viewer_frame = Frame(scrollable_frame)
+edit_entry_frame = Frame(scrollable_frame)
 
-for frame in (main_frame, dealer_frame, workorder_frame, destination_frame, destination_entry_frame, destination_entry_viewer_frame):
+for frame in (main_frame, dealer_frame, workorder_frame, destination_frame, destination_entry_frame, destination_entry_viewer_frame, edit_entry_frame):
     frame.grid(row=0, column=0, sticky='nsew')
 
 # Configure main_frame to center its contents
@@ -91,7 +94,8 @@ DealerManager(dealer_frame, main_frame, conn)
 WorkOrderRatePage(workorder_frame, main_frame, conn)
 DestinationPage(destination_frame, main_frame, conn)
 DestinationEntryPage(destination_entry_frame, main_frame, conn)
-DestinationEntryViewer(destination_entry_viewer_frame, main_frame, conn)
+edit_entry_page = EditDestinationEntryPage(edit_entry_frame, main_frame, conn)
+DestinationEntryViewer(destination_entry_viewer_frame, main_frame, conn, edit_entry_page)
 
 # Frame switch
 def show_frame(frame):
