@@ -8,6 +8,12 @@ class DestinationEntryPage:
         self.home_frame = home_frame
         self.conn = conn
         self.c = conn.cursor()
+        self.editing_mode = False
+        self.destination_entry_id = None
+        self.range_entry_ids = {}   # key = range_index, value = range_entry_id
+        self.dealer_entry_ids = {}  # key = (range_index, dealer_index), value = dealer_entry_id
+        self.save_button = Button(self.frame, text="💾 Save Entry", font=("Arial", 12), command=self.save_entries)
+
 
         self.used_ranges = set()
         self.range_frames = []
@@ -113,8 +119,7 @@ class DestinationEntryPage:
         self.range_container.pack(fill='both', expand=True)
 
         self.load_destinations()
-        Button(self.frame, text="💾 Save Entry", font=("Arial", 12), command=self.save_entries).pack(pady=10)
-        
+        self.save_button.pack(pady=10)        
     
     def save_entries(self):
         selected_dest = self.destination_cb.get()
@@ -138,8 +143,11 @@ class DestinationEntryPage:
                 VALUES (?, ?, ?, ?, ?)
             """, (destination_id, letter_note, bill_number, date, to_address))
             destination_entry_id = self.c.lastrowid
+            
+            saved_range_ids = {}
+            saved_dealer_ids = {}
 
-            for frame in self.range_frames:
+            for range_index, frame in enumerate(self.range_frames):
                 rate_range_id = frame.rate_range_id
                 dealer_rows = frame.dealer_rows
 
@@ -148,6 +156,7 @@ class DestinationEntryPage:
                 total_mtk = sum(row.get('mtk', 0.0) for row in dealer_rows)
                 total_amount = sum(row.get('amount', 0.0) for row in dealer_rows)
 
+                # Insert range_entry
                 self.c.execute("""
                     INSERT INTO range_entry (
                         destination_entry_id, rate_range_id, total_bags,
@@ -158,8 +167,9 @@ class DestinationEntryPage:
                     total_bags, total_mt, total_mtk, total_amount
                 ))
                 range_entry_id = self.c.lastrowid
+                saved_range_ids[range_index] = range_entry_id  # ✅ Save range ID
 
-                for row in dealer_rows:
+                for dealer_index, row in enumerate(dealer_rows):
                     if 'dealer_id' not in row or 'bags' not in row:
                         continue
 
@@ -174,9 +184,17 @@ class DestinationEntryPage:
                         row['mt'], row['mtk'], row['amount'], 
                         row['mda_number'], row['date']
                     ))
+                    dealer_entry_id = self.c.lastrowid
+                    saved_dealer_ids[(range_index, dealer_index)] = dealer_entry_id  # ✅ Save dealer ID
 
             self.conn.commit()
             messagebox.showinfo("Success", "Destination Entry saved successfully.")
+
+            self.editing_mode = True
+            self.destination_entry_id = destination_entry_id
+            self.range_entry_ids = saved_range_ids
+            self.dealer_entry_ids = saved_dealer_ids
+            self.update_buttons_to_edit_mode()
 
         except Exception as e:
             self.conn.rollback()
@@ -357,4 +375,138 @@ class DestinationEntryPage:
         frame.update_totals = update_totals
         frame.rate = rate
         self.range_frames.append(frame)
+    
+    def update_buttons_to_edit_mode(self):
+        self.save_button.destroy()
+        self.save_button = Button(self.frame, text="💾 Save Changes", command=self.save_changes)
+        self.save_button.pack(pady=10)
 
+        Button(self.frame, text="➕ Add New Entry", command=self.refresh).pack()
+    
+    def save_changes(self):
+        letter_note = self.letter_note_text.get("1.0", END).strip()
+        bill_number = self.bill_number_entry.get().strip()
+        date = self.date_entry.get().strip()
+        to_address = self.to_address_text.get("1.0", END).strip()
+
+        if not self.editing_mode or not self.destination_entry_id:
+            messagebox.showwarning("Error", "Not in edit mode or missing destination entry.")
+            return
+
+        try:
+            # Update destination_entry
+            self.c.execute("""
+                UPDATE destination_entry
+                SET date=?, to_address=?, bill_number=?, letter_note=?
+                WHERE id=?
+            """, (
+                date, to_address, bill_number, letter_note, self.destination_entry_id
+            ))
+
+            current_dealer_ids = set()
+            new_dealer_entry_ids = {}
+            new_range_entry_ids = {}
+
+            for range_index, frame in enumerate(self.range_frames):
+                rate_range_id = frame.rate_range_id
+                dealer_rows = frame.dealer_rows
+
+                # Check if range_entry already exists or is new
+                range_entry_id = self.range_entry_ids.get(range_index)
+                is_new_range = range_entry_id is None
+
+                # Calculate totals
+                total_bags = sum(row.get('bags', 0) for row in dealer_rows)
+                total_mt = sum(row.get('mt', 0.0) for row in dealer_rows)
+                total_mtk = sum(row.get('mtk', 0.0) for row in dealer_rows)
+                total_amount = sum(row.get('amount', 0.0) for row in dealer_rows)
+
+                if is_new_range:
+                    # Insert new range_entry
+                    self.c.execute("""
+                        INSERT INTO range_entry (
+                            destination_entry_id, rate_range_id,
+                            total_bags, total_mt, total_mtk, total_amount
+                        ) VALUES (?, ?, ?, ?, ?, ?)
+                    """, (
+                        self.destination_entry_id, rate_range_id,
+                        total_bags, total_mt, total_mtk, total_amount
+                    ))
+                    range_entry_id = self.c.lastrowid
+                else:
+                    # Update existing range_entry
+                    self.c.execute("""
+                        UPDATE range_entry
+                        SET total_bags=?, total_mt=?, total_mtk=?, total_amount=?
+                        WHERE id=?
+                    """, (
+                        total_bags, total_mt, total_mtk, total_amount, range_entry_id
+                    ))
+
+                new_range_entry_ids[range_index] = range_entry_id
+
+                existing_ids_for_range = set()
+
+                for dealer_index, row in enumerate(dealer_rows):
+                    dealer_entry_id = self.dealer_entry_ids.get((range_index, dealer_index))
+
+                    if dealer_entry_id:
+                        # Update existing dealer_entry
+                        self.c.execute("""
+                            UPDATE dealer_entry
+                            SET dealer_id=?, km=?, no_bags=?, rate=?,
+                                mt=?, mtk=?, amount=?, mda_number=?, date=?
+                            WHERE id=?
+                        """, (
+                            row['dealer_id'], row['km'], row['bags'], frame.rate,
+                            row['mt'], row['mtk'], row['amount'],
+                            row['mda_number'], row['date'],
+                            dealer_entry_id
+                        ))
+                    else:
+                        # Insert new dealer_entry
+                        self.c.execute("""
+                            INSERT INTO dealer_entry (
+                                range_entry_id, dealer_id, km, no_bags, rate,
+                                mt, mtk, amount, mda_number, date
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            range_entry_id, row['dealer_id'], row['km'], row['bags'],
+                            frame.rate, row['mt'], row['mtk'], row['amount'],
+                            row['mda_number'], row['date']
+                        ))
+                        dealer_entry_id = self.c.lastrowid
+
+                    new_dealer_entry_ids[(range_index, dealer_index)] = dealer_entry_id
+                    current_dealer_ids.add(dealer_entry_id)
+                    existing_ids_for_range.add(dealer_entry_id)
+
+                # Delete old dealer entries no longer present in UI
+                self.c.execute("SELECT id FROM dealer_entry WHERE range_entry_id = ?", (range_entry_id,))
+                all_db_ids = {r[0] for r in self.c.fetchall()}
+                to_delete_ids = all_db_ids - existing_ids_for_range
+                for del_id in to_delete_ids:
+                    self.c.execute("DELETE FROM dealer_entry WHERE id = ?", (del_id,))
+
+            self.conn.commit()
+
+            # Update stored IDs to match the new state
+            self.range_entry_ids = new_range_entry_ids
+            self.dealer_entry_ids = new_dealer_entry_ids
+
+            messagebox.showinfo("Success", "Changes saved successfully.")
+        except Exception as e:
+            self.conn.rollback()
+            messagebox.showerror("Error", f"Failed to update:\n{e}")
+       
+    
+    def refresh(self):
+        self.editing_mode = False
+        self.destination_entry_id = None
+        self.range_entry_ids.clear()
+        self.dealer_entry_ids.clear()
+
+        for widget in self.frame.winfo_children():
+            widget.destroy()
+
+        self.__init__(self.frame, self.home_frame, self.conn)  # reinitialize
