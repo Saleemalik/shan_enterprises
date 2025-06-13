@@ -44,12 +44,14 @@ class DestinationEntryPage:
             mt REAL,
             mtk REAL,
             amount REAL,
+            mda_number TEXT,
+            date TEXT,
             FOREIGN KEY (range_entry_id) REFERENCES range_entry(id),
             FOREIGN KEY (dealer_id) REFERENCES dealer(id)
         )''')
 
         self.build_ui()
-        
+
     def refresh(self):
         # Clear range frames
         for rf in self.range_frames:
@@ -113,6 +115,7 @@ class DestinationEntryPage:
         self.load_destinations()
         Button(self.frame, text="💾 Save Entry", font=("Arial", 12), command=self.save_entries).pack(pady=10)
         
+    
     def save_entries(self):
         selected_dest = self.destination_cb.get()
         if not selected_dest:
@@ -125,19 +128,17 @@ class DestinationEntryPage:
         date = self.date_entry.get().strip()
         to_address = self.to_address_text.get("1.0", END).strip()
 
-        if not bill_number:
-            messagebox.showerror("Error", "Bill number is required.")
-            return
+        # if not bill_number:
+        #     messagebox.showerror("Error", "Bill number is required.")
+        #     return
 
         try:
-            # Insert into destination_entry
             self.c.execute("""
                 INSERT INTO destination_entry (destination_id, letter_note, bill_number, date, to_address)
                 VALUES (?, ?, ?, ?, ?)
             """, (destination_id, letter_note, bill_number, date, to_address))
             destination_entry_id = self.c.lastrowid
 
-            # Insert each range_entry and related dealer_entry rows
             for frame in self.range_frames:
                 rate_range_id = frame.rate_range_id
                 dealer_rows = frame.dealer_rows
@@ -147,7 +148,6 @@ class DestinationEntryPage:
                 total_mtk = sum(row.get('mtk', 0.0) for row in dealer_rows)
                 total_amount = sum(row.get('amount', 0.0) for row in dealer_rows)
 
-                # Insert into range_entry
                 self.c.execute("""
                     INSERT INTO range_entry (
                         destination_entry_id, rate_range_id, total_bags,
@@ -159,20 +159,20 @@ class DestinationEntryPage:
                 ))
                 range_entry_id = self.c.lastrowid
 
-                # Insert dealer_entry for each dealer
                 for row in dealer_rows:
                     if 'dealer_id' not in row or 'bags' not in row:
-                        continue  # Skip incomplete rows
+                        continue
 
                     self.c.execute("""
                         INSERT INTO dealer_entry (
                             range_entry_id, dealer_id, km, no_bags, rate,
-                            mt, mtk, amount
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            mt, mtk, amount, mda_number, date
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         range_entry_id, row['dealer_id'], row['km'], row['bags'],
-                        frame.cget("text").split("@ ₹")[-1].split(" ")[0],  # Extract rate from label
-                        row['mt'], row['mtk'], row['amount']
+                        frame.rate,
+                        row['mt'], row['mtk'], row['amount'], 
+                        row['mda_number'], row['date']
                     ))
 
             self.conn.commit()
@@ -181,7 +181,6 @@ class DestinationEntryPage:
         except Exception as e:
             self.conn.rollback()
             messagebox.showerror("Error", f"Failed to save entry:\n{e}")
-
 
     def load_destinations(self):
         self.c.execute("SELECT id, name FROM destination")
@@ -230,48 +229,40 @@ class DestinationEntryPage:
         from_km, to_km, rate, is_mtk = self.c.fetchone()
 
         range_label = f"Range: {from_km} – {to_km} km | Rate: ₹{rate} | {'MTK' if is_mtk else 'MT'}"
-
-        # Clear previous selector widgets
         range_cb.grid_remove()
         for widget in frame.grid_slaves():
             if isinstance(widget, Button):
                 widget.grid_remove()
 
         Label(frame, text=range_label).grid(row=0, column=0, columnspan=3, pady=5, sticky='w')
-
-        # Remove range button
         Button(frame, text="Remove This Range", command=lambda: self.remove_range(frame, rate_range_id)).grid(row=0, column=3, sticky='e')
 
-        Label(frame, text="MDA No.").grid(row=1, column=0)
-        mda_entry = Entry(frame)
-        mda_entry.grid(row=1, column=1)
-
-        Label(frame, text="Date").grid(row=2, column=0)
-        date_entry = Entry(frame)
-        date_entry.insert(0, datetime.now().strftime("%Y-%m-%d"))
-        date_entry.grid(row=2, column=1)
-
-        Label(frame, text="Dealers for this range", font=("Arial", 10, "bold")).grid(row=3, column=0, columnspan=3, pady=(10, 0))
-
-        # Dealer list container
+        Label(frame, text="Dealers for this range", font=("Arial", 10, "bold")).grid(row=1, column=0, columnspan=4, pady=(10, 0))
         dealer_frame = Frame(frame)
+        Label(dealer_frame, text="Dealer", font=("Arial", 9, "bold")).grid(row=0, column=0)
+        Label(dealer_frame, text="MDA No.", font=("Arial", 9, "bold")).grid(row=0, column=1)
+        Label(dealer_frame, text="Date", font=("Arial", 9, "bold")).grid(row=0, column=2)
+        Label(dealer_frame, text="Bags", font=("Arial", 9, "bold")).grid(row=0, column=3)
+        Label(dealer_frame, text="Details", font=("Arial", 9, "bold")).grid(row=0, column=4)
+        Label(dealer_frame, text="Actions", font=("Arial", 9, "bold")).grid(row=0, column=5)
+        
+
         dealer_frame.grid(row=4, column=0, columnspan=4, sticky="w")
+        
         selected_dest = self.destination_cb.get()
         destination_id = self.destination_map.get(selected_dest)
 
         self.c.execute("""
             SELECT id, name, distance FROM dealer
-            WHERE distance BETWEEN ? AND ?
-            AND destination_id = ?
+            WHERE distance BETWEEN ? AND ? AND destination_id = ?
         """, (from_km, to_km, destination_id))
-
         dealers = self.c.fetchall()
         dealer_map = {f"{id} - {name} ({distance}km)": (id, distance) for id, name, distance in dealers}
 
         dealer_rows = []
 
         totals_label = Label(frame, text="Total Bags: 0 | MT: 0.00 | MTK: 0.00 | ₹0.00", font=("Arial", 10, "bold"), fg="green")
-        totals_label.grid(row=6, column=0, columnspan=4, pady=5)
+        totals_label.grid(row=5, column=0, columnspan=4, pady=5)
 
         def update_totals():
             total_bags = sum(row.get('bags', 0) for row in dealer_rows)
@@ -283,7 +274,7 @@ class DestinationEntryPage:
             )
 
         def add_dealer_row():
-            row_idx = len(dealer_rows)
+            row_idx = len(dealer_rows) + 1
             row = {}
 
             dealer_var = StringVar()
@@ -299,13 +290,22 @@ class DestinationEntryPage:
                     dealer_cb.event_generate('<Down>')
 
             dealer_cb.bind('<KeyRelease>', filter_dealers)
+            
+            mda_entry = Entry(dealer_frame, width=12)
+            mda_entry.grid(row=row_idx, column=1)
+            row['mda_entry'] = mda_entry
+
+            date_entry = Entry(dealer_frame, width=12)
+            date_entry.insert(0, datetime.now().strftime("%Y-%m-%d"))
+            date_entry.grid(row=row_idx, column=2)
+            row['date_entry'] = date_entry
 
             bags_entry = Entry(dealer_frame, width=5)
-            bags_entry.grid(row=row_idx, column=1, padx=2)
+            bags_entry.grid(row=row_idx, column=3, padx=2)
             row['bags_entry'] = bags_entry
 
             result_lbl = Label(dealer_frame, text="", width=40, anchor='w')
-            result_lbl.grid(row=row_idx, column=2, padx=2)
+            result_lbl.grid(row=row_idx, column=4, padx=2)
             row['result_lbl'] = result_lbl
 
             def calculate_row():
@@ -313,14 +313,6 @@ class DestinationEntryPage:
                 if not selected or selected not in dealer_map:
                     result_lbl.config(text="Select valid dealer")
                     return
-
-                # # Prevent duplicate
-                # for existing_row in dealer_rows:
-                #     if existing_row is row:
-                #         continue
-                #     if existing_row.get('dealer_cb') and existing_row['dealer_cb'].get() == selected:
-                #         result_lbl.config(text="Duplicate dealer")
-                #         return
 
                 dealer_id, km = dealer_map[selected]
                 try:
@@ -335,34 +327,34 @@ class DestinationEntryPage:
                         'bags': bags,
                         'mt': mt,
                         'mtk': mtk,
-                        'amount': amount
+                        'amount': amount,
+                        'mda_number': mda_entry.get(),
+                        'date': date_entry.get()
                     })
                     update_totals()
                 except ValueError:
                     result_lbl.config(text="Invalid input")
 
-            # ❌ Remove button
             def remove_dealer_row():
-                for widget in [dealer_cb, bags_entry, result_lbl, calc_btn, remove_btn]:
+                for widget in [dealer_cb, mda_entry, date_entry, bags_entry, result_lbl, calc_btn, remove_btn]:
                     widget.destroy()
                 dealer_rows.remove(row)
                 update_totals()
 
             calc_btn = Button(dealer_frame, text="Calc", command=calculate_row)
-            calc_btn.grid(row=row_idx, column=3)
+            calc_btn.grid(row=row_idx, column=5)
 
             remove_btn = Button(dealer_frame, text="❌", command=remove_dealer_row)
-            remove_btn.grid(row=row_idx, column=4)
+            remove_btn.grid(row=row_idx, column=6)
 
             dealer_rows.append(row)
 
-        Button(frame, text="+ Add Dealer", command=add_dealer_row).grid(row=5, column=0, columnspan=2, pady=5)
+        Button(frame, text="+ Add Dealer", command=add_dealer_row).grid(row=6, column=0, columnspan=2, pady=5)
         add_dealer_row()
 
-        # Save for future use (e.g. DB save)
         frame.rate_range_id = rate_range_id
         frame.dealer_rows = dealer_rows
         frame.update_totals = update_totals
-        frame.mda_entry = mda_entry
-        frame.date_entry = date_entry
+        frame.rate = rate
         self.range_frames.append(frame)
+
