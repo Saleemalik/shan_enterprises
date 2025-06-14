@@ -1,6 +1,11 @@
 from tkinter import *
 from tkinter import ttk, messagebox
 from datetime import datetime
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+import os
 
 class DestinationEntryPage:
     def __init__(self, frame, home_frame, conn):
@@ -13,7 +18,7 @@ class DestinationEntryPage:
         self.range_entry_ids = {}   # key = range_index, value = range_entry_id
         self.dealer_entry_ids = {}  # key = (range_index, dealer_index), value = dealer_entry_id
         self.save_button = Button(self.frame, text="💾 Save Entry", font=("Arial", 12), command=self.save_entries)
-
+        self.print_button = Button(self.frame, text="🖨️ Print Entry", font=("Arial", 12), command=self.print_entry)
 
         self.used_ranges = set()
         self.range_frames = []
@@ -97,7 +102,7 @@ class DestinationEntryPage:
         self.destination_cb.grid(row=0, column=1, padx=5)
 
         Label(form, text="Letter Note").grid(row=1, column=0)
-        self.letter_note_text =  Text(form, height=3, width=40, pady=5)
+        self.letter_note_text = Text(form, height=3, width=40, pady=5)
         self.letter_note_text.grid(row=1, column=1, pady=5)
 
         Label(form, text="Bill Number").grid(row=2, column=0)
@@ -119,8 +124,8 @@ class DestinationEntryPage:
         self.range_container.pack(fill='both', expand=True)
 
         self.load_destinations()
-        self.save_button.pack(pady=10)        
-    
+        self.save_button.pack(pady=10)
+
     def save_entries(self):
         selected_dest = self.destination_cb.get()
         if not selected_dest:
@@ -132,10 +137,6 @@ class DestinationEntryPage:
         bill_number = self.bill_number_entry.get().strip()
         date = self.date_entry.get().strip()
         to_address = self.to_address_text.get("1.0", END).strip()
-
-        # if not bill_number:
-        #     messagebox.showerror("Error", "Bill number is required.")
-        #     return
 
         try:
             self.c.execute("""
@@ -267,7 +268,6 @@ class DestinationEntryPage:
         Label(dealer_frame, text="Bags", font=("Arial", 9, "bold")).grid(row=0, column=3)
         Label(dealer_frame, text="Details", font=("Arial", 9, "bold")).grid(row=0, column=4)
         Label(dealer_frame, text="Actions", font=("Arial", 9, "bold")).grid(row=0, column=5)
-        
 
         dealer_frame.grid(row=4, column=0, columnspan=4, sticky="w")
         
@@ -300,7 +300,7 @@ class DestinationEntryPage:
             row = {}
 
             dealer_var = StringVar()
-            dealer_cb = ttk.Combobox(dealer_frame, textvariable=dealer_var, values=list(dealer_map.keys()), state="normal", width=30)
+            dealer_cb = ttk.Combobox(dealer_frame, textvariable=dealer_var, values=list(dealer_map.keys()), state="customNormal", width=30)
             dealer_cb.grid(row=row_idx, column=0, padx=2, pady=2)
             row['dealer_cb'] = dealer_cb
 
@@ -385,6 +385,8 @@ class DestinationEntryPage:
         self.save_button.destroy()
         self.save_button = Button(self.frame, text="💾 Save Changes", command=self.save_changes)
         self.save_button.pack(pady=10)
+        self.print_button.pack(pady=10)
+
 
         Button(self.frame, text="➕ Add New Entry", command=self.refresh).pack()
     
@@ -513,7 +515,7 @@ class DestinationEntryPage:
         for widget in self.frame.winfo_children():
             widget.destroy()
 
-        self.__init__(self.frame, self.home_frame, self.conn) 
+        self.__init__(self.frame, self.home_frame, self.conn)
 
     def load_existing_entry(self, destination_entry_id):
         self.refresh()  # Clear current state
@@ -612,3 +614,141 @@ class DestinationEntryPage:
 
                 self.dealer_entry_ids[(range_index, dealer_index)] = dealer_entry_id
         self.update_buttons_to_edit_mode()
+
+    def print_entry(self):
+        if not self.editing_mode or not self.destination_entry_id:
+            messagebox.showwarning("Error", "Please save the entry before printing.")
+            return
+
+        # Fetch destination entry details
+        self.c.execute("""
+            SELECT destination_id, letter_note, bill_number, date, to_address
+            FROM destination_entry WHERE id = ?
+        """, (self.destination_entry_id,))
+        row = self.c.fetchone()
+        if not row:
+            messagebox.showerror("Error", "Destination entry not found.")
+            return
+
+        destination_id, letter_note, bill_number, date, to_address = row
+        self.c.execute("SELECT name FROM destination WHERE id = ?", (destination_id,))
+        destination_name = self.c.fetchone()[0]
+
+        # Fetch range entries and their dealers
+        self.c.execute("SELECT id, rate_range_id FROM range_entry WHERE destination_entry_id = ?", (self.destination_entry_id,))
+        range_entries = self.c.fetchall()
+        
+        range_data = []
+        for range_entry_id, rate_range_id in range_entries:
+            self.c.execute("SELECT from_km, to_km FROM rate_range WHERE id = ?", (rate_range_id,))
+            from_km, to_km = self.c.fetchone()
+            range_name = f"{destination_name} {from_km}-{to_km}"
+
+            self.c.execute("""
+                SELECT dealer_id, km, no_bags, mt, mtk, amount, mda_number, date
+                FROM dealer_entry WHERE range_entry_id = ?
+            """, (range_entry_id,))
+            dealer_entries = self.c.fetchall()
+
+            table_data = [["SL NO", "Date", "MDA NO", "Description", "Despatched to", "Bag", "MT", "KM", "MTK"]]
+            for idx, (dealer_id, km, no_bags, mt, mtk, amount, mda_number, entry_date) in enumerate(dealer_entries, 1):
+                self.c.execute("SELECT name FROM dealer WHERE id = ?", (dealer_id,))
+                dealer_name = self.c.fetchone()[0]
+                table_data.append([
+                    str(idx), entry_date, mda_number, "FACTOM FOS", dealer_name, str(no_bags), f"{mt:.3f}", str(km), f"{mtk:.2f}"
+                ])
+
+            # Add total row
+            self.c.execute("""
+                SELECT total_bags, total_mt, total_mtk, total_amount
+                FROM range_entry WHERE id = ?
+            """, (range_entry_id,))
+            total_bags, total_mt, total_mtk, total_amount = self.c.fetchone()
+            table_data.append(["", "", "", "", "TOTAL", str(total_bags), f"{total_mt:.3f}", "", f"{total_amount:.2f}"])
+
+            range_data.append((range_name, table_data))
+
+        # Generate PDF
+        pdf_file = "bill_report.pdf"
+        doc = SimpleDocTemplate(pdf_file, pagesize=A4, leftMargin=30, rightMargin=30, topMargin=20, bottomMargin=20)
+        elements = []
+
+        styles = getSampleStyleSheet()
+        styles.add(ParagraphStyle(name='Small', fontSize=8, leading=10))
+        styles.add(ParagraphStyle(name='NormalBold', fontSize=10, leading=12, fontName='Helvetica-Bold'))
+        styles.add(ParagraphStyle(name='TitleBold', fontSize=12, leading=14, fontName='Helvetica-Bold', alignment=0))
+        styles.add(ParagraphStyle(name='CustomNormal', fontSize=10, leading=12))  # Changed 'Normal' to 'CustomNormal'
+        
+        # LEFT COLUMN - Company Info
+        left_column = [
+            Paragraph("GSTIN: 32ACNFS 8060K1ZP", styles['Small']),
+            Paragraph("M/s. SHAN ENTERPRISES", styles['TitleBold']),
+            Paragraph("Clearing & Transporting contractor", styles['CustomNormal']),
+            Paragraph("21-4185, C-Meenchanda gate Calicut - 673018", styles['CustomNormal']),
+            Paragraph("Mob: 9447004108", styles['CustomNormal']),
+        ]
+        
+        # RIGHT COLUMN - To Address and Bill Info
+        to_address_lines = to_address.split('\n')
+        to_address_paragraphs = [Paragraph(line, styles['CustomNormal']) for line in to_address_lines]
+        right_column = to_address_paragraphs + [
+            Spacer(1, 6),
+            Paragraph(f"Date: {date}", styles['CustomNormal']),
+            # You can add more fields like Bill No here
+        ]
+        
+        # Create Table with 2 columns: [LEFT COLUMN, RIGHT COLUMN]
+        table_data = [[left_column, right_column]]
+        table = Table(table_data, colWidths=[310, 225])  # Adjust widths as needed
+        
+        # Optional: Add table style for spacing
+        table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+
+        elements.append(table)
+        elements.append(Spacer(1, 12))
+        
+        
+        elements.append(Paragraph('Sir,', styles['CustomNormal']))
+        
+        # Letter note
+        letter_note_text = ("we are submitting the following clearing / transportation bills, "
+                           "Despatched from West hill RH to the place shown below as per the terms of work order no: "
+                           "MM/182/4800017315 Dated 25.05.2023")
+        elements.append(Paragraph(letter_note_text, styles['CustomNormal']))  # Updated style name
+        elements.append(Spacer(1, 12))
+
+        # Tables
+        for range_name, table_data in range_data:
+            elements.append(Paragraph(range_name, styles['NormalBold']))
+            table = Table(table_data, colWidths=[30, 60, 60, 80, 120, 40, 40, 40, 50])
+            table.setStyle(TableStyle([
+                ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONT', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+            ]))
+            elements.append(table)
+            elements.append(Spacer(1, 12))
+
+        # Footer
+        elements.append(Paragraph("Passed by", styles['CustomNormal']))  # Updated style name
+        elements.append(Paragraph("officer in charge", styles['CustomNormal']))  # Updated style name
+
+        doc.build(elements)
+
+        # Open the PDF (platform-dependent)
+        try:
+            os.startfile(pdf_file)  # Windows
+        except AttributeError:
+            try:
+                os.system(f"open {pdf_file}")  # macOS
+            except:
+                os.system(f"xdg-open {pdf_file}")  # Linux
+
+        messagebox.showinfo("Success", "PDF generated and opened for printing.")
