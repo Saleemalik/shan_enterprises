@@ -513,7 +513,7 @@ class DestinationEntryPage:
         for widget in self.frame.winfo_children():
             widget.destroy()
 
-        self.__init__(self.frame, self.home_frame, self.conn)  # reinitialize
+        self.__init__(self.frame, self.home_frame, self.conn) 
 
     def load_existing_entry(self, destination_entry_id):
         self.refresh()  # Clear current state
@@ -588,13 +588,13 @@ class DestinationEntryPage:
                     row['dealer_cb'].set(dealer_str)
 
                 row['mda_entry'].delete(0, END)
-                row['mda_entry'].insert(0, mda_number)
+                row['mda_entry'].insert(0, mda_number or '')
 
                 row['date_entry'].delete(0, END)
-                row['date_entry'].insert(0, entry_date)
+                row['date_entry'].insert(0, entry_date or '')
 
                 row['bags_entry'].delete(0, END)
-                row['bags_entry'].insert(0, str(no_bags))
+                row['bags_entry'].insert(0, str(no_bags or 0))
 
                 row.update({
                     'dealer_id': dealer_id,
