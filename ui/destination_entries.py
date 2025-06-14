@@ -220,6 +220,11 @@ class DestinationEntryPage:
         range_cb.set("Select Range")
 
         Button(frame, text="Select", command=lambda: self.setup_range(frame, range_cb)).grid(row=0, column=1, padx=5)
+        frame.range_cb = range_cb  # Store reference for later use
+        frame.dealer_rows = []  # Store dealer rows for this range
+        frame.update_totals = lambda: None  # Placeholder for totals update function
+        frame.rate = 0
+        self.range_frames.append(frame)
 
     def get_available_ranges(self):
         self.c.execute("SELECT id, from_km, to_km, rate, is_mtk FROM rate_range")
@@ -233,7 +238,6 @@ class DestinationEntryPage:
             self.used_ranges.discard(rate_range_id)
             frame.destroy()
             self.range_frames.remove(frame)
-
 
     def setup_range(self, frame, range_cb):
         val = range_cb.get()
@@ -373,8 +377,9 @@ class DestinationEntryPage:
         frame.rate_range_id = rate_range_id
         frame.dealer_rows = dealer_rows
         frame.update_totals = update_totals
+        frame.add_dealer_row = add_dealer_row
         frame.rate = rate
-        self.range_frames.append(frame)
+        frame.dealer_map = dealer_map
     
     def update_buttons_to_edit_mode(self):
         self.save_button.destroy()
@@ -498,7 +503,6 @@ class DestinationEntryPage:
         except Exception as e:
             self.conn.rollback()
             messagebox.showerror("Error", f"Failed to update:\n{e}")
-       
     
     def refresh(self):
         self.editing_mode = False
@@ -510,3 +514,101 @@ class DestinationEntryPage:
             widget.destroy()
 
         self.__init__(self.frame, self.home_frame, self.conn)  # reinitialize
+
+    def load_existing_entry(self, destination_entry_id):
+        self.refresh()  # Clear current state
+        self.editing_mode = True
+        self.destination_entry_id = destination_entry_id
+        self.range_entry_ids = {}
+        self.dealer_entry_ids = {}
+        self.used_ranges = set()
+
+        # Fetch and set header fields
+        self.c.execute("""
+            SELECT destination_id, letter_note, bill_number, date, to_address
+            FROM destination_entry WHERE id = ?
+        """, (destination_entry_id,))
+        row = self.c.fetchone()
+        if not row:
+            messagebox.showerror("Error", "Destination entry not found.")
+            return
+
+        destination_id, letter_note, bill_number, date, to_address = row
+        dest_name = next((name for name, id_ in self.destination_map.items() if id_ == destination_id), None)
+        if dest_name:
+            self.destination_cb.set(dest_name)
+
+        self.letter_note_text.delete("1.0", END)
+        self.letter_note_text.insert("1.0", letter_note)
+        self.bill_number_entry.delete(0, END)
+        self.bill_number_entry.insert(0, bill_number)
+        self.date_entry.delete(0, END)
+        self.date_entry.insert(0, date)
+        self.to_address_text.delete("1.0", END)
+        self.to_address_text.insert("1.0", to_address)
+
+        # Fetch all range entries
+        self.c.execute("SELECT id, rate_range_id FROM range_entry WHERE destination_entry_id = ?", (destination_entry_id,))
+        range_entries = self.c.fetchall()
+
+        for range_index, (range_entry_id, rate_range_id) in enumerate(range_entries):
+            self.range_entry_ids[range_index] = range_entry_id
+            self.used_ranges.add(rate_range_id)
+
+            # STEP 1: Add range frame → fill rate_range_id
+            self.add_range_frame()
+            range_frame = self.range_frames[-1]  # latest frame
+            range_cb = range_frame.range_cb  # defined in your add_range_frame method
+
+            # Set the combobox value to match this range
+            self.c.execute("SELECT from_km, to_km FROM rate_range WHERE id = ?", (rate_range_id,))
+            from_km, to_km = self.c.fetchone()
+            range_display = f"{rate_range_id} | {from_km}-{to_km} km"
+            range_cb.set(range_display)
+
+            # STEP 2: Call setup_range manually
+            self.setup_range(range_frame, range_cb)
+
+            # STEP 3: Fetch all dealer entries in this range
+            self.c.execute("""
+                SELECT id, dealer_id, km, no_bags, rate, mt, mtk, amount, mda_number, date
+                FROM dealer_entry WHERE range_entry_id = ?
+            """, (range_entry_id,))
+            dealer_entries = self.c.fetchall()
+
+            for dealer_index, (dealer_entry_id, dealer_id, km, no_bags, rate, mt, mtk, amount, mda_number, entry_date) in enumerate(dealer_entries):
+                # STEP 4: Add dealer row
+                if dealer_index > 0:
+                    range_frame.add_dealer_row()
+                row = range_frame.dealer_rows[-1]
+
+                # STEP 5: Populate data into UI fields
+                dealer_str = next((k for k, v in range_frame.dealer_map.items() if v[0] == dealer_id), None)
+                if dealer_str:
+                    row['dealer_cb'].set(dealer_str)
+
+                row['mda_entry'].delete(0, END)
+                row['mda_entry'].insert(0, mda_number)
+
+                row['date_entry'].delete(0, END)
+                row['date_entry'].insert(0, entry_date)
+
+                row['bags_entry'].delete(0, END)
+                row['bags_entry'].insert(0, str(no_bags))
+
+                row.update({
+                    'dealer_id': dealer_id,
+                    'km': km,
+                    'bags': no_bags,
+                    'mt': mt,
+                    'mtk': mtk,
+                    'amount': amount,
+                    'mda_number': mda_number,
+                    'date': entry_date
+                })
+
+                row['result_lbl'].config(text=f"MT: {mt:.2f} | KM: {km} | MTK: {mtk:.2f} | ₹{amount:.2f}")
+                range_frame.update_totals()
+
+                self.dealer_entry_ids[(range_index, dealer_index)] = dealer_entry_id
+        self.update_buttons_to_edit_mode()

@@ -57,7 +57,6 @@ class DestinationEntryViewer:
         btn_frame = Frame(self.frame)
         btn_frame.pack(pady=5)
 
-        Button(btn_frame, text="🔍 View Entry", command=self.view_entry).pack(side=LEFT, padx=10)
         Button(btn_frame, text="✏️ Edit Entry", command=self.edit_entry).pack(side=LEFT, padx=10)
         Button(btn_frame, text="🗑 Delete Entry", command=self.delete_entry).pack(side=LEFT, padx=10)
 
@@ -72,17 +71,10 @@ class DestinationEntryViewer:
         values = self.tree.item(selected, "values")
         return values[0]
 
-    def view_entry(self):
-        entry_id = self.get_selected_entry_id()
-        if entry_id:
-            print(f"View Entry ID: {entry_id}")
-            # self.view_frame.load_entry(entry_id)
-            # self.view_frame.tkraise()
-
     def edit_entry(self):
         entry_id = self.get_selected_entry_id()
         if entry_id:
-            self.edit_entry_page.load_entry(entry_id)
+            self.edit_entry_page.load_existing_entry(entry_id)
             self.edit_entry_page.frame.tkraise()
             print(f"Edit Entry ID: {entry_id}")
 

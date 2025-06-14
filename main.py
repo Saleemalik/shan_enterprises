@@ -6,7 +6,6 @@ from ui.workorders import WorkOrderRatePage
 from ui.destinations import DestinationPage
 from ui.destination_entries import DestinationEntryPage
 from ui.destinationentryview import DestinationEntryViewer
-from ui.editdestinationentry import EditDestinationEntryPage
 
 # DB setup
 conn = sqlite3.connect("billing_app.db")
@@ -94,7 +93,7 @@ DealerManager(dealer_frame, main_frame, conn)
 WorkOrderRatePage(workorder_frame, main_frame, conn)
 DestinationPage(destination_frame, main_frame, conn)
 DestinationEntryPage(destination_entry_frame, main_frame, conn)
-edit_entry_page = EditDestinationEntryPage(edit_entry_frame, main_frame, conn)
+edit_entry_page = DestinationEntryPage(edit_entry_frame, main_frame, conn)
 DestinationEntryViewer(destination_entry_viewer_frame, main_frame, conn, edit_entry_page)
 
 # Frame switch
