@@ -19,16 +19,18 @@ class DestinationEntryViewer:
         Label(filter_frame, text="Destination").grid(row=0, column=0)
         self.dest_cb = ttk.Combobox(filter_frame, state="readonly", width=25)
         self.dest_cb.grid(row=0, column=1, padx=5)
+        Button(filter_frame, text="Clear", command=lambda: self.dest_cb.set("")).grid(row=0, column=2, padx=5)
 
-        Label(filter_frame, text="Date").grid(row=0, column=2)
+
+        Label(filter_frame, text="Date").grid(row=0, column=3)
         self.date_entry = Entry(filter_frame)
-        self.date_entry.grid(row=0, column=3, padx=5)
+        self.date_entry.grid(row=0, column=4, padx=5)
 
-        Label(filter_frame, text="Dealer Name").grid(row=0, column=4)
+        Label(filter_frame, text="Dealer Name").grid(row=0, column=5)
         self.dealer_entry = Entry(filter_frame)
-        self.dealer_entry.grid(row=0, column=5, padx=5)
+        self.dealer_entry.grid(row=0, column=6, padx=5)
 
-        Button(filter_frame, text="🔍 Search", command=self.search_entries).grid(row=0, column=6, padx=10)
+        Button(filter_frame, text="🔍 Search", command=self.search_entries).grid(row=0, column=7, padx=10)
 
         # Treeview with scrollbar
         tree_frame = Frame(self.frame)
