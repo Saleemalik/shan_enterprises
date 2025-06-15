@@ -59,7 +59,17 @@ main_canvas.configure(yscrollcommand=v_scrollbar.set)
 main_canvas.bind('<Configure>', lambda e: main_canvas.configure(scrollregion=main_canvas.bbox("all")))
 
 scrollable_frame = Frame(main_canvas)
+scrollable_frame.bind(
+    "<Configure>",
+    lambda e: main_canvas.configure(scrollregion=main_canvas.bbox("all"))
+)
 main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+def resize_canvas(event):
+    canvas_width = event.width
+    main_canvas.itemconfig("frame_window", width=canvas_width)
+
+frame_window = main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", tags="frame_window")
+main_canvas.bind("<Configure>", resize_canvas)
 
 # Frames
 main_frame = Frame(scrollable_frame)
@@ -99,6 +109,8 @@ DestinationEntryViewer(destination_entry_viewer_frame, main_frame, conn, edit_en
 # Frame switch
 def show_frame(frame):
     frame.tkraise()
+    root.update_idletasks()  # Ensures all widgets are updated
+    main_canvas.configure(scrollregion=main_canvas.bbox("all"))  # Update scroll region
 
 show_frame(main_frame)
 root.mainloop()

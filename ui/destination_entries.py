@@ -213,7 +213,7 @@ class DestinationEntryPage:
 
     def add_range_frame(self):
         available_ranges = self.get_available_ranges()
-        if not available_ranges:
+        if not available_ranges and not self.editing_mode:
             messagebox.showinfo("Done", "No more ranges available")
             return
 
@@ -236,7 +236,7 @@ class DestinationEntryPage:
         ranges = self.c.fetchall()
         return [f"{id} | {from_km}-{to_km}km @ ₹{rate} ({'MTK' if is_mtk else 'MT'})" 
                 for id, from_km, to_km, rate, is_mtk in ranges if id not in self.used_ranges]
-        
+
     def remove_range(self, frame, rate_range_id):
         confirm = messagebox.askyesno("Confirm", "Remove this range and all its dealer entries?")
         if confirm:
