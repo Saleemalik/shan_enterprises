@@ -37,6 +37,7 @@ class DestinationEntryPage:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             destination_entry_id INTEGER,
             rate_range_id INTEGER,
+            rate REAL,  
             total_bags INTEGER,
             total_mt REAL,
             total_mtk REAL,
@@ -57,6 +58,8 @@ class DestinationEntryPage:
             amount REAL,
             mda_number TEXT,
             date TEXT,
+            description TEXT DEFAULT 'FACTOM FOS',
+            remarks TEXT,
             FOREIGN KEY (range_entry_id) REFERENCES range_entry(id),
             FOREIGN KEY (dealer_id) REFERENCES dealer(id)
         )''')
@@ -150,6 +153,7 @@ class DestinationEntryPage:
 
             for range_index, frame in enumerate(self.range_frames):
                 rate_range_id = frame.rate_range_id
+                rate = frame.rate
                 dealer_rows = frame.dealer_rows
 
                 total_bags = sum(row.get('bags', 0) for row in dealer_rows)
@@ -157,18 +161,18 @@ class DestinationEntryPage:
                 total_mtk = sum(row.get('mtk', 0.0) for row in dealer_rows)
                 total_amount = sum(row.get('amount', 0.0) for row in dealer_rows)
 
-                # Insert range_entry
+                # Insert range_entry with rate
                 self.c.execute("""
                     INSERT INTO range_entry (
-                        destination_entry_id, rate_range_id, total_bags,
+                        destination_entry_id, rate_range_id, rate, total_bags,
                         total_mt, total_mtk, total_amount
-                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    destination_entry_id, rate_range_id,
+                    destination_entry_id, rate_range_id, rate,
                     total_bags, total_mt, total_mtk, total_amount
                 ))
                 range_entry_id = self.c.lastrowid
-                saved_range_ids[range_index] = range_entry_id  # ✅ Save range ID
+                saved_range_ids[range_index] = range_entry_id
 
                 for dealer_index, row in enumerate(dealer_rows):
                     if 'dealer_id' not in row or 'bags' not in row:
@@ -177,16 +181,16 @@ class DestinationEntryPage:
                     self.c.execute("""
                         INSERT INTO dealer_entry (
                             range_entry_id, dealer_id, km, no_bags, rate,
-                            mt, mtk, amount, mda_number, date
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            mt, mtk, amount, mda_number, date, description, remarks
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         range_entry_id, row['dealer_id'], row['km'], row['bags'],
-                        frame.rate,
-                        row['mt'], row['mtk'], row['amount'], 
-                        row['mda_number'], row['date']
+                        frame.rate, row['mt'], row['mtk'], row['amount'], 
+                        row['mda_number'], row['date'], 
+                        row.get('description', 'FACTOM FOS'), row.get('remarks', '')
                     ))
                     dealer_entry_id = self.c.lastrowid
-                    saved_dealer_ids[(range_index, dealer_index)] = dealer_entry_id  # ✅ Save dealer ID
+                    saved_dealer_ids[(range_index, dealer_index)] = dealer_entry_id
 
             self.conn.commit()
             messagebox.showinfo("Success", "Destination Entry saved successfully.")
@@ -221,9 +225,9 @@ class DestinationEntryPage:
         range_cb.set("Select Range")
 
         Button(frame, text="Select", command=lambda: self.setup_range(frame, range_cb)).grid(row=0, column=1, padx=5)
-        frame.range_cb = range_cb  # Store reference for later use
-        frame.dealer_rows = []  # Store dealer rows for this range
-        frame.update_totals = lambda: None  # Placeholder for totals update function
+        frame.range_cb = range_cb
+        frame.dealer_rows = []
+        frame.update_totals = lambda: None
         frame.rate = 0
         self.range_frames.append(frame)
 
@@ -251,7 +255,7 @@ class DestinationEntryPage:
         self.c.execute("SELECT from_km, to_km, rate, is_mtk FROM rate_range WHERE id=?", (rate_range_id,))
         from_km, to_km, rate, is_mtk = self.c.fetchone()
 
-        range_label = f"Range: {from_km} – {to_km} km | Rate: ₹{rate} | {'MTK' if is_mtk else 'MT'}"
+        range_label = f"Range: {from_km} – {to_km} km | Rate: ₹{rate:.2f} | {'MTK' if is_mtk else 'MT'}"
         range_cb.grid_remove()
         for widget in frame.grid_slaves():
             if isinstance(widget, Button):
@@ -266,8 +270,10 @@ class DestinationEntryPage:
         Label(dealer_frame, text="MDA No.", font=("Arial", 9, "bold")).grid(row=0, column=1)
         Label(dealer_frame, text="Date", font=("Arial", 9, "bold")).grid(row=0, column=2)
         Label(dealer_frame, text="Bags", font=("Arial", 9, "bold")).grid(row=0, column=3)
-        Label(dealer_frame, text="Details", font=("Arial", 9, "bold")).grid(row=0, column=4)
-        Label(dealer_frame, text="Actions", font=("Arial", 9, "bold")).grid(row=0, column=5)
+        Label(dealer_frame, text="Description", font=("Arial", 9, "bold")).grid(row=0, column=4)
+        Label(dealer_frame, text="Remarks", font=("Arial", 9, "bold")).grid(row=0, column=5)
+        Label(dealer_frame, text="Details", font=("Arial", 9, "bold")).grid(row=0, column=6)
+        Label(dealer_frame, text="Actions", font=("Arial", 9, "bold")).grid(row=0, column=7)
 
         dealer_frame.grid(row=4, column=0, columnspan=4, sticky="w")
         
@@ -326,8 +332,17 @@ class DestinationEntryPage:
             bags_entry.grid(row=row_idx, column=3, padx=2)
             row['bags_entry'] = bags_entry
 
+            desc_entry = Entry(dealer_frame, width=15)
+            desc_entry.insert(0, "FACTOM FOS")
+            desc_entry.grid(row=row_idx, column=4, padx=2)
+            row['desc_entry'] = desc_entry
+
+            remarks_entry = Entry(dealer_frame, width=15)
+            remarks_entry.grid(row=row_idx, column=5, padx=2)
+            row['remarks_entry'] = remarks_entry
+
             result_lbl = Label(dealer_frame, text="", width=40, anchor='w')
-            result_lbl.grid(row=row_idx, column=4, padx=2)
+            result_lbl.grid(row=row_idx, column=6, padx=2)
             row['result_lbl'] = result_lbl
 
             def calculate_row():
@@ -351,23 +366,25 @@ class DestinationEntryPage:
                         'mtk': mtk,
                         'amount': amount,
                         'mda_number': mda_entry.get(),
-                        'date': date_entry.get()
+                        'date': date_entry.get(),
+                        'description': desc_entry.get(),
+                        'remarks': remarks_entry.get()
                     })
                     update_totals()
                 except ValueError:
                     result_lbl.config(text="Invalid input")
 
             def remove_dealer_row():
-                for widget in [dealer_cb, mda_entry, date_entry, bags_entry, result_lbl, calc_btn, remove_btn]:
+                for widget in [dealer_cb, mda_entry, date_entry, bags_entry, desc_entry, remarks_entry, result_lbl, calc_btn, remove_btn]:
                     widget.destroy()
                 dealer_rows.remove(row)
                 update_totals()
 
             calc_btn = Button(dealer_frame, text="Calc", command=calculate_row)
-            calc_btn.grid(row=row_idx, column=5)
+            calc_btn.grid(row=row_idx, column=7)
 
             remove_btn = Button(dealer_frame, text="❌", command=remove_dealer_row)
-            remove_btn.grid(row=row_idx, column=6)
+            remove_btn.grid(row=row_idx, column=8)
 
             dealer_rows.append(row)
 
@@ -386,7 +403,6 @@ class DestinationEntryPage:
         self.save_button = Button(self.frame, text="💾 Save Changes", command=self.save_changes)
         self.save_button.pack(pady=10)
         self.print_button.pack(pady=10)
-
 
         Button(self.frame, text="➕ Add New Entry", command=self.refresh).pack()
     
@@ -416,6 +432,7 @@ class DestinationEntryPage:
 
             for range_index, frame in enumerate(self.range_frames):
                 rate_range_id = frame.rate_range_id
+                rate = frame.rate
                 dealer_rows = frame.dealer_rows
 
                 # Check if range_entry already exists or is new
@@ -429,25 +446,25 @@ class DestinationEntryPage:
                 total_amount = sum(row.get('amount', 0.0) for row in dealer_rows)
 
                 if is_new_range:
-                    # Insert new range_entry
+                    # Insert new range_entry with rate
                     self.c.execute("""
                         INSERT INTO range_entry (
-                            destination_entry_id, rate_range_id,
+                            destination_entry_id, rate_range_id, rate,
                             total_bags, total_mt, total_mtk, total_amount
-                        ) VALUES (?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        self.destination_entry_id, rate_range_id,
+                        self.destination_entry_id, rate_range_id, rate,
                         total_bags, total_mt, total_mtk, total_amount
                     ))
                     range_entry_id = self.c.lastrowid
                 else:
-                    # Update existing range_entry
+                    # Update existing range_entry with rate
                     self.c.execute("""
                         UPDATE range_entry
-                        SET total_bags=?, total_mt=?, total_mtk=?, total_amount=?
+                        SET rate=?, total_bags=?, total_mt=?, total_mtk=?, total_amount=?
                         WHERE id=?
                     """, (
-                        total_bags, total_mt, total_mtk, total_amount, range_entry_id
+                        rate, total_bags, total_mt, total_mtk, total_amount, range_entry_id
                     ))
 
                 new_range_entry_ids[range_index] = range_entry_id
@@ -462,12 +479,14 @@ class DestinationEntryPage:
                         self.c.execute("""
                             UPDATE dealer_entry
                             SET dealer_id=?, km=?, no_bags=?, rate=?,
-                                mt=?, mtk=?, amount=?, mda_number=?, date=?
+                                mt=?, mtk=?, amount=?, mda_number=?, date=?,
+                                description=?, remarks=?
                             WHERE id=?
                         """, (
                             row['dealer_id'], row['km'], row['bags'], frame.rate,
                             row['mt'], row['mtk'], row['amount'],
                             row['mda_number'], row['date'],
+                            row.get('description', 'FACTOM FOS'), row.get('remarks', ''),
                             dealer_entry_id
                         ))
                     else:
@@ -475,12 +494,13 @@ class DestinationEntryPage:
                         self.c.execute("""
                             INSERT INTO dealer_entry (
                                 range_entry_id, dealer_id, km, no_bags, rate,
-                                mt, mtk, amount, mda_number, date
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                mt, mtk, amount, mda_number, date, description, remarks
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             range_entry_id, row['dealer_id'], row['km'], row['bags'],
                             frame.rate, row['mt'], row['mtk'], row['amount'],
-                            row['mda_number'], row['date']
+                            row['mda_number'], row['date'],
+                            row.get('description', 'FACTOM FOS'), row.get('remarks', '')
                         ))
                         dealer_entry_id = self.c.lastrowid
 
@@ -518,7 +538,7 @@ class DestinationEntryPage:
         self.__init__(self.frame, self.home_frame, self.conn)
 
     def load_existing_entry(self, destination_entry_id):
-        self.refresh()  # Clear current state
+        self.refresh()
         self.editing_mode = True
         self.destination_entry_id = destination_entry_id
         self.range_entry_ids = {}
@@ -550,41 +570,42 @@ class DestinationEntryPage:
         self.to_address_text.insert("1.0", to_address)
 
         # Fetch all range entries
-        self.c.execute("SELECT id, rate_range_id FROM range_entry WHERE destination_entry_id = ?", (destination_entry_id,))
+        self.c.execute("SELECT id, rate_range_id, rate FROM range_entry WHERE destination_entry_id = ?", (destination_entry_id,))
         range_entries = self.c.fetchall()
 
-        for range_index, (range_entry_id, rate_range_id) in enumerate(range_entries):
+        for range_index, (range_entry_id, rate_range_id, rate) in enumerate(range_entries):
             self.range_entry_ids[range_index] = range_entry_id
             self.used_ranges.add(rate_range_id)
 
-            # STEP 1: Add range frame → fill rate_range_id
+            # Add range frame
             self.add_range_frame()
-            range_frame = self.range_frames[-1]  # latest frame
-            range_cb = range_frame.range_cb  # defined in your add_range_frame method
+            range_frame = self.range_frames[-1]
+            range_cb = range_frame.range_cb
 
-            # Set the combobox value to match this range
+            # Set the combobox value
             self.c.execute("SELECT from_km, to_km FROM rate_range WHERE id = ?", (rate_range_id,))
             from_km, to_km = self.c.fetchone()
             range_display = f"{rate_range_id} | {from_km}-{to_km} km"
             range_cb.set(range_display)
 
-            # STEP 2: Call setup_range manually
+            # Setup range
             self.setup_range(range_frame, range_cb)
 
-            # STEP 3: Fetch all dealer entries in this range
+            # Update rate in frame
+            range_frame.rate = rate
+
+            # Fetch all dealer entries
             self.c.execute("""
-                SELECT id, dealer_id, km, no_bags, rate, mt, mtk, amount, mda_number, date
+                SELECT id, dealer_id, km, no_bags, rate, mt, mtk, amount, mda_number, date, description, remarks
                 FROM dealer_entry WHERE range_entry_id = ?
             """, (range_entry_id,))
             dealer_entries = self.c.fetchall()
 
-            for dealer_index, (dealer_entry_id, dealer_id, km, no_bags, rate, mt, mtk, amount, mda_number, entry_date) in enumerate(dealer_entries):
-                # STEP 4: Add dealer row
+            for dealer_index, (dealer_entry_id, dealer_id, km, no_bags, rate, mt, mtk, amount, mda_number, entry_date, description, remarks) in enumerate(dealer_entries):
                 if dealer_index > 0:
                     range_frame.add_dealer_row()
                 row = range_frame.dealer_rows[-1]
 
-                # STEP 5: Populate data into UI fields
                 dealer_str = next((k for k, v in range_frame.dealer_map.items() if v[0] == dealer_id), None)
                 if dealer_str:
                     row['dealer_cb'].set(dealer_str)
@@ -598,6 +619,12 @@ class DestinationEntryPage:
                 row['bags_entry'].delete(0, END)
                 row['bags_entry'].insert(0, str(no_bags or 0))
 
+                row['desc_entry'].delete(0, END)
+                row['desc_entry'].insert(0, description or 'FACTOM FOS')
+
+                row['remarks_entry'].delete(0, END)
+                row['remarks_entry'].insert(0, remarks or '')
+
                 row.update({
                     'dealer_id': dealer_id,
                     'km': km,
@@ -606,7 +633,9 @@ class DestinationEntryPage:
                     'mtk': mtk,
                     'amount': amount,
                     'mda_number': mda_number,
-                    'date': entry_date
+                    'date': entry_date,
+                    'description': description,
+                    'remarks': remarks
                 })
 
                 row['result_lbl'].config(text=f"MT: {mt:.2f} | KM: {km} | MTK: {mtk:.2f} | ₹{amount:.2f}")
@@ -635,27 +664,28 @@ class DestinationEntryPage:
         destination_name = self.c.fetchone()[0]
 
         # Fetch range entries and their dealers
-        self.c.execute("SELECT id, rate_range_id FROM range_entry WHERE destination_entry_id = ?", (self.destination_entry_id,))
+        self.c.execute("SELECT id, rate_range_id, rate FROM range_entry WHERE destination_entry_id = ?", (self.destination_entry_id,))
         range_entries = self.c.fetchall()
         
         range_data = []
-        for range_entry_id, rate_range_id in range_entries:
+        for range_entry_id, rate_range_id, rate in range_entries:
             self.c.execute("SELECT from_km, to_km FROM rate_range WHERE id = ?", (rate_range_id,))
             from_km, to_km = self.c.fetchone()
             range_name = f"{destination_name} {from_km}-{to_km}"
 
             self.c.execute("""
-                SELECT dealer_id, km, no_bags, mt, mtk, amount, mda_number, date
+                SELECT dealer_id, km, no_bags, mt, mtk, amount, mda_number, date, description, remarks
                 FROM dealer_entry WHERE range_entry_id = ?
             """, (range_entry_id,))
             dealer_entries = self.c.fetchall()
 
-            table_data = [["SL NO", "Date", "MDA NO", "Description", "Despatched to", "Bag", "MT", "KM", "MTK"]]
-            for idx, (dealer_id, km, no_bags, mt, mtk, amount, mda_number, entry_date) in enumerate(dealer_entries, 1):
-                self.c.execute("SELECT name FROM dealer WHERE id = ?", (dealer_id,))
-                dealer_name = self.c.fetchone()[0]
+            table_data = [["SL NO", "Date", "MDA NO", "Description", "Despatched to", "Bag", "MT", "KM", "MTK", "Rate", "Amount", "Remarks"]]
+            for idx, (dealer_id, km, no_bags, mt, mtk, amount, mda_number, entry_date, description, remarks) in enumerate(dealer_entries, 1):
+                self.c.execute("SELECT name, place FROM dealer WHERE id = ?", (dealer_id,))
+                dealer_name, dealer_place = self.c.fetchone()
+                dispatched_to = f"{dealer_name}, {dealer_place or ''}"
                 table_data.append([
-                    str(idx), entry_date, mda_number, "FACTOM FOS", dealer_name, str(no_bags), f"{mt:.3f}", str(km), f"{mtk:.2f}"
+                    str(idx), entry_date, mda_number, description, dispatched_to, str(no_bags), f"{mt:.3f}", str(km), f"{mtk:.2f}", f"₹{rate:.2f}", f"₹{amount:.2f}", remarks or ''
                 ])
 
             # Add total row
@@ -664,7 +694,7 @@ class DestinationEntryPage:
                 FROM range_entry WHERE id = ?
             """, (range_entry_id,))
             total_bags, total_mt, total_mtk, total_amount = self.c.fetchone()
-            table_data.append(["", "", "", "", "TOTAL", str(total_bags), f"{total_mt:.3f}", "", f"{total_amount:.2f}"])
+            table_data.append(["", "", "", "", "TOTAL", str(total_bags), f"{total_mt:.3f}", "", f"{total_mtk:.2f}", f"₹{rate:.2f}", f"₹{total_amount:.2f}", ""])
 
             range_data.append((range_name, table_data))
 
@@ -677,7 +707,7 @@ class DestinationEntryPage:
         styles.add(ParagraphStyle(name='Small', fontSize=8, leading=10))
         styles.add(ParagraphStyle(name='NormalBold', fontSize=10, leading=12, fontName='Helvetica-Bold'))
         styles.add(ParagraphStyle(name='TitleBold', fontSize=12, leading=14, fontName='Helvetica-Bold', alignment=0))
-        styles.add(ParagraphStyle(name='CustomNormal', fontSize=10, leading=12))  # Changed 'Normal' to 'CustomNormal'
+        styles.add(ParagraphStyle(name='CustomNormal', fontSize=10, leading=12))
         
         # LEFT COLUMN - Company Info
         left_column = [
@@ -694,14 +724,12 @@ class DestinationEntryPage:
         right_column = to_address_paragraphs + [
             Spacer(1, 6),
             Paragraph(f"Date: {date}", styles['CustomNormal']),
-            # You can add more fields like Bill No here
         ]
         
-        # Create Table with 2 columns: [LEFT COLUMN, RIGHT COLUMN]
+        # Create Table with 2 columns
         table_data = [[left_column,"", right_column]]
-        table = Table(table_data, colWidths=[310,100, 125])  # Adjust widths as needed
+        table = Table(table_data, colWidths=[310,100, 125])
         
-        # Optional: Add table style for spacing
         table.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ]))
@@ -712,36 +740,34 @@ class DestinationEntryPage:
         elements.append(Spacer(1, 6))
         
         elements.append(Paragraph('Sir,', styles['CustomNormal']))
-        # Letter note
-        letter_note_text = ("we are submitting the following clearing / transportation bills, "
-                           "Despatched from West hill RH to the place shown below as per the terms of work order no: "
-                           "MM/182/4800017315 Dated 25.05.2023")
-        elements.append(Paragraph(letter_note_text, styles['CustomNormal']))  # Updated style name
-        elements.append(Spacer(1, 12))
+        elements.append(Paragraph(letter_note if letter_note else "Please find the details below:", styles['CustomNormal']))
+        elements.append(Spacer(1, 8))
 
         # Tables
         for range_name, table_data in range_data:
             elements.append(Paragraph(range_name, styles['NormalBold']))
-            table = Table(table_data, colWidths=[30, 60, 60, 80, 120, 40, 40, 40, 50])
+            table = Table(table_data, colWidths=[20, 40, 40, 60, 91, 35, 35, 35, 40, 35, 45, 45])
             table.setStyle(TableStyle([
                 ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONT', (0, 1), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('FONTSIZE', (0, 0), (-1, -1), 6),  # Reduced font size
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+                ('LEFTPADDING', (0, 0), (-1, -1), 3),  # Reduced padding
+                ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+                ('TOPPADDING', (0, 0), (-1, -1), 1),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
             ]))
             elements.append(table)
-            elements.append(Spacer(1, 12))
+            elements.append(Spacer(1, 4))  # Reduced spacer height
 
         # Footer
-        
-
-        passedby = Paragraph("Passed by", styles['CustomNormal'])  # Updated style name
-        incharge = Paragraph("officer in charge", styles['CustomNormal']) # Updated style name
-        sign = Paragraph("signature of contractor", styles['CustomNormal'])  # Updated style name
+        passedby = Paragraph("Passed by", styles['CustomNormal'])
+        incharge = Paragraph("officer in charge", styles['CustomNormal'])
+        sign = Paragraph("signature of contractor", styles['CustomNormal'])
         
         table_footer_data = [[passedby, "", incharge, "", sign]]
         footer_table = Table(table_footer_data, colWidths=[100, 120, 100, 110, 100])
@@ -754,13 +780,13 @@ class DestinationEntryPage:
 
         doc.build(elements)
 
-        # Open the PDF (platform-dependent)
+        # Open the PDF
         try:
-            os.startfile(pdf_file)  # Windows
+            os.startfile(pdf_file)
         except AttributeError:
             try:
-                os.system(f"open {pdf_file}")  # macOS
+                os.system(f"open {pdf_file}")
             except:
-                os.system(f"xdg-open {pdf_file}")  # Linux
+                os.system(f"xdg-open {pdf_file}")
 
         messagebox.showinfo("Success", "PDF generated and opened for printing.")
