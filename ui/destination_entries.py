@@ -404,7 +404,7 @@ class DestinationEntryPage:
         self.save_button.pack(pady=10)
         self.print_button.pack(pady=10)
 
-        Button(self.frame, text="➕ Add New Entry", command=self.refresh).pack()
+        Button(self.frame, text="➕ Add New Entry", command=self.refresh).pack(pady=20)
     
     def save_changes(self):
         letter_note = self.letter_note_text.get("1.0", END).strip()
