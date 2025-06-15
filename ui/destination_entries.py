@@ -698,8 +698,8 @@ class DestinationEntryPage:
         ]
         
         # Create Table with 2 columns: [LEFT COLUMN, RIGHT COLUMN]
-        table_data = [[left_column, right_column]]
-        table = Table(table_data, colWidths=[310, 225])  # Adjust widths as needed
+        table_data = [[left_column,"", right_column]]
+        table = Table(table_data, colWidths=[310,100, 125])  # Adjust widths as needed
         
         # Optional: Add table style for spacing
         table.setStyle(TableStyle([
@@ -708,10 +708,10 @@ class DestinationEntryPage:
 
         elements.append(table)
         elements.append(Spacer(1, 12))
-        
+        elements.append(Paragraph(f"Bill No.: {bill_number},", styles['CustomNormal']))
+        elements.append(Spacer(1, 6))
         
         elements.append(Paragraph('Sir,', styles['CustomNormal']))
-        
         # Letter note
         letter_note_text = ("we are submitting the following clearing / transportation bills, "
                            "Despatched from West hill RH to the place shown below as per the terms of work order no: "
@@ -737,8 +737,20 @@ class DestinationEntryPage:
             elements.append(Spacer(1, 12))
 
         # Footer
-        elements.append(Paragraph("Passed by", styles['CustomNormal']))  # Updated style name
-        elements.append(Paragraph("officer in charge", styles['CustomNormal']))  # Updated style name
+        
+
+        passedby = Paragraph("Passed by", styles['CustomNormal'])  # Updated style name
+        incharge = Paragraph("officer in charge", styles['CustomNormal']) # Updated style name
+        sign = Paragraph("signature of contractor", styles['CustomNormal'])  # Updated style name
+        
+        table_footer_data = [[passedby, "", incharge, "", sign]]
+        footer_table = Table(table_footer_data, colWidths=[100, 120, 100, 110, 100])
+        footer_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(footer_table)
 
         doc.build(elements)
 
