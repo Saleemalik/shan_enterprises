@@ -105,7 +105,7 @@ class DestinationEntryPage:
         self.destination_cb.grid(row=0, column=1, padx=5)
 
         Label(form, text="Letter Note").grid(row=1, column=0)
-        self.letter_note_text = Text(form, height=3, width=40, pady=5)
+        self.letter_note_text = Text(form, height=5, width=60, pady=5)
         self.letter_note_text.grid(row=1, column=1, pady=5)
 
         Label(form, text="Bill Number").grid(row=2, column=0)
@@ -118,7 +118,7 @@ class DestinationEntryPage:
         self.date_entry.grid(row=3, column=1)
 
         Label(form, text="To Address").grid(row=4, column=0, pady=5)
-        self.to_address_text = Text(form, height=2, width=40)
+        self.to_address_text = Text(form, height=5, width=60)
         self.to_address_text.grid(row=4, column=1, pady=5)
 
         Button(form, text="+ Add Range", command=self.add_range_frame).grid(row=5, column=0, columnspan=2, pady=10)
