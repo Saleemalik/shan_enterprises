@@ -671,7 +671,7 @@ class DestinationEntryPage:
         for range_entry_id, rate_range_id, rate in range_entries:
             self.c.execute("SELECT from_km, to_km FROM rate_range WHERE id = ?", (rate_range_id,))
             from_km, to_km = self.c.fetchone()
-            range_name = f"{destination_name} {from_km}-{to_km}"
+            range_name = f"{destination_name.upper()} {from_km}-{to_km}"
 
             self.c.execute("""
                 SELECT dealer_id, km, no_bags, mt, mtk, amount, mda_number, date, description, remarks
@@ -705,7 +705,7 @@ class DestinationEntryPage:
 
         styles = getSampleStyleSheet()
         styles.add(ParagraphStyle(name='Small', fontSize=8, leading=10))
-        styles.add(ParagraphStyle(name='NormalBold', fontSize=10, leading=12, fontName='Helvetica-Bold'))
+        styles.add(ParagraphStyle(name='NormalBold', fontSize=8, leading=10, fontName='Helvetica-Bold'))
         styles.add(ParagraphStyle(name='TitleBold', fontSize=12, leading=14, fontName='Helvetica-Bold', alignment=0))
         styles.add(ParagraphStyle(name='CustomNormal', fontSize=10, leading=12))
         
