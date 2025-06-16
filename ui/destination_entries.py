@@ -213,7 +213,7 @@ class DestinationEntryPage:
 
     def add_range_frame(self):
         available_ranges = self.get_available_ranges()
-        if not available_ranges and not self.editing_mode:
+        if not available_ranges:
             messagebox.showinfo("Done", "No more ranges available")
             return
 
@@ -240,9 +240,28 @@ class DestinationEntryPage:
     def remove_range(self, frame, rate_range_id):
         confirm = messagebox.askyesno("Confirm", "Remove this range and all its dealer entries?")
         if confirm:
+            # Remove UI references
             self.used_ranges.discard(rate_range_id)
             frame.destroy()
             self.range_frames.remove(frame)
+
+            # Ensure we are editing an existing destination entry
+            if self.editing_mode and self.destination_entry_id:
+                # Get the corresponding range_entry.id
+                self.c.execute('''SELECT id FROM range_entry 
+                                WHERE destination_entry_id = ? AND rate_range_id = ?''',
+                            (self.destination_entry_id, rate_range_id))
+                result = self.c.fetchone()
+                if result:
+                    range_entry_id = result[0]
+                    
+                    # Delete all dealer entries linked to this range entry
+                    self.c.execute("DELETE FROM dealer_entry WHERE range_entry_id = ?", (range_entry_id,))
+
+                    # Delete the range entry
+                    self.c.execute("DELETE FROM range_entry WHERE id = ?", (range_entry_id,))
+
+                    self.conn.commit()
 
     def setup_range(self, frame, range_cb):
         val = range_cb.get()
@@ -404,7 +423,7 @@ class DestinationEntryPage:
         self.save_button.pack(pady=10)
         self.print_button.pack(pady=10)
 
-        Button(self.frame, text="➕ Add New Entry", command=self.refresh).pack(pady=20)
+        Button(self.frame, text="➕ Add New Entry", command=lambda:self.refresh(False)).pack(pady=20)
     
     def save_changes(self):
         letter_note = self.letter_note_text.get("1.0", END).strip()
@@ -526,19 +545,21 @@ class DestinationEntryPage:
             self.conn.rollback()
             messagebox.showerror("Error", f"Failed to update:\n{e}")
     
-    def refresh(self):
-        self.editing_mode = False
-        self.destination_entry_id = None
-        self.range_entry_ids.clear()
-        self.dealer_entry_ids.clear()
+    def refresh(self, stat=True):
+        if self.editing_mode and stat:
+            self.load_existing_entry(self.destination_entry_id)
+        else:            
+            self.destination_entry_id = None
+            self.range_entry_ids.clear()
+            self.dealer_entry_ids.clear()
 
-        for widget in self.frame.winfo_children():
-            widget.destroy()
+            for widget in self.frame.winfo_children():
+                widget.destroy()
 
-        self.__init__(self.frame, self.home_frame, self.conn)
+            self.__init__(self.frame, self.home_frame, self.conn)
 
     def load_existing_entry(self, destination_entry_id):
-        self.refresh()
+        self.refresh(False)
         self.editing_mode = True
         self.destination_entry_id = destination_entry_id
         self.range_entry_ids = {}
@@ -574,13 +595,14 @@ class DestinationEntryPage:
         range_entries = self.c.fetchall()
 
         for range_index, (range_entry_id, rate_range_id, rate) in enumerate(range_entries):
-            self.range_entry_ids[range_index] = range_entry_id
-            self.used_ranges.add(rate_range_id)
-
+            
             # Add range frame
             self.add_range_frame()
             range_frame = self.range_frames[-1]
             range_cb = range_frame.range_cb
+            
+            self.range_entry_ids[range_index] = range_entry_id
+            self.used_ranges.add(rate_range_id)
 
             # Set the combobox value
             self.c.execute("SELECT from_km, to_km FROM rate_range WHERE id = ?", (rate_range_id,))
