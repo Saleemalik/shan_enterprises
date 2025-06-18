@@ -67,6 +67,13 @@ main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
 def resize_canvas(event):
     canvas_width = event.width
     main_canvas.itemconfig("frame_window", width=canvas_width)
+    
+def _on_mousewheel(event):
+    main_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+scrollable_frame.bind_all("<MouseWheel>", _on_mousewheel)  # Windows and Mac
+scrollable_frame.bind_all("<Button-4>", lambda e: main_canvas.yview_scroll(-1, "units"))  # Linux
+scrollable_frame.bind_all("<Button-5>", lambda e: main_canvas.yview_scroll(1, "units"))  # Linux
 
 frame_window = main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", tags="frame_window")
 main_canvas.bind("<Configure>", resize_canvas)
