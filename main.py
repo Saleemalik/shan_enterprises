@@ -63,7 +63,7 @@ scrollable_frame.bind(
     "<Configure>",
     lambda e: main_canvas.configure(scrollregion=main_canvas.bbox("all"))
 )
-main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+# main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
 def resize_canvas(event):
     canvas_width = event.width
     main_canvas.itemconfig("frame_window", width=canvas_width)

@@ -36,17 +36,18 @@ class DestinationEntryViewer:
         tree_frame = Frame(self.frame)
         tree_frame.pack(fill='both', expand=True, padx=10, pady=10)
 
-        scrollbar = Scrollbar(tree_frame)
-        scrollbar.pack(side=RIGHT, fill=Y)
+        # scrollbar = Scrollbar(tree_frame)
+        # scrollbar.pack(side=RIGHT, fill=Y)
 
-        columns = ("id", "date", "destination", "range", "dealer", "bags", "mt", "km", "rate", "mtk", "amount")
+        columns = ("id", "date", "destination", "letter_note", "bill_number", "to_address")
         column_titles = {
-            "id": "ID", "date": "Date", "destination": "Destination", "range": "Range",
-            "dealer": "Dealer", "bags": "Bags", "mt": "MT", "km": "KM", "rate": "Rate", "mtk": "MTK", "amount": "Amount"
+            "id": "ID", "date": "Date", "destination": "Destination",
+            "letter_note": "Letter Note", "bill_number": "Bill No", "to_address": "To Address"
         }
 
-        self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings", yscrollcommand=scrollbar.set)
-        scrollbar.config(command=self.tree.yview)
+
+        self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings") # yscrollcommand=scrollbar.set
+        # scrollbar.config(command=self.tree.yview)
 
         for col in columns:
             self.tree.heading(col, text=column_titles[col])
@@ -104,27 +105,16 @@ class DestinationEntryViewer:
         dests = self.c.fetchall()
         self.dest_map = {name: id for id, name in dests}
         self.dest_cb["values"] = list(self.dest_map.keys())
-
+    
     def search_entries(self):
         dest_id = self.dest_map.get(self.dest_cb.get())
         date = self.date_entry.get().strip()
         dealer = self.dealer_entry.get().strip()
 
         query = """
-            SELECT de.id, de.date, d.name, 
-                rr.from_km || '-' || rr.to_km || 'km', dl.name,
-                dr.no_bags, 
-                ROUND(dr.no_bags * 0.05, 2) as mt,
-                dl.distance,
-                rr.rate,
-                ROUND(dr.no_bags * 0.05 * dl.distance, 2) as mtk,
-                dr.amount
+            SELECT de.id, de.date, d.name, de.letter_note, de.bill_number, de.to_address
             FROM destination_entry de
             JOIN destination d ON de.destination_id = d.id
-            JOIN range_entry re ON re.destination_entry_id = de.id
-            JOIN rate_range rr ON re.rate_range_id = rr.id
-            JOIN dealer_entry dr ON dr.range_entry_id = re.id
-            JOIN dealer dl ON dr.dealer_id = dl.id
             WHERE 1=1
         """
         params = []
@@ -136,7 +126,14 @@ class DestinationEntryViewer:
             query += " AND de.date = ?"
             params.append(date)
         if dealer:
-            query += " AND dl.name LIKE ?"
+            query += """
+                AND EXISTS (
+                    SELECT 1 FROM range_entry re
+                    JOIN dealer_entry dr ON dr.range_entry_id = re.id
+                    JOIN dealer dl ON dr.dealer_id = dl.id
+                    WHERE re.destination_entry_id = de.id AND dl.name LIKE ?
+                )
+            """
             params.append(f"%{dealer}%")
 
         query += " ORDER BY de.date DESC, de.id DESC"
