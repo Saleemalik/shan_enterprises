@@ -6,6 +6,7 @@ from ui.workorders import WorkOrderRatePage
 from ui.destinations import DestinationPage
 from ui.destination_entries import DestinationEntryPage
 from ui.destinationentryview import DestinationEntryViewer
+from ui.mainbillentry import MainBillPage
 
 # DB setup
 conn = sqlite3.connect("billing_app.db")
@@ -46,7 +47,8 @@ conn.commit()
 # Root Window
 root = Tk()
 root.title("Billing App")
-root.geometry('1600x1000')  # Initial size
+root.geometry("1600x900")
+root.resizable(True, True)  # Allow resizing
 
 # Canvas + Scrollbar
 main_canvas = Canvas(root)
@@ -86,13 +88,26 @@ destination_frame = Frame(scrollable_frame)
 destination_entry_frame = Frame(scrollable_frame)
 destination_entry_viewer_frame = Frame(scrollable_frame)
 edit_entry_frame = Frame(scrollable_frame)
+main_bill_frame = Frame(scrollable_frame)
 
-for frame in (main_frame, dealer_frame, workorder_frame, destination_frame, destination_entry_frame, destination_entry_viewer_frame, edit_entry_frame):
+for frame in (main_frame, dealer_frame, workorder_frame, destination_frame, destination_entry_frame, destination_entry_viewer_frame, edit_entry_frame, main_bill_frame):
+    frame.grid_rowconfigure(0, weight=1)  # Allow rows to expand
+    frame.grid_columnconfigure(0, weight=1)  # Allow columns to expand
+    frame.grid_columnconfigure(1, weight=1)  # Extra column for spacing
+    frame.grid_columnconfigure(2, weight=1)  # Extra column for spacing
+    frame.grid_columnconfigure(3, weight=1)  # Extra column for spacing
+    frame.grid_columnconfigure(4, weight=1)  # Extra column for spacing
+    frame.grid_columnconfigure(5, weight=1)  # Extra column for spacing
+    frame.grid_columnconfigure(6, weight=1)  # Extra column for spacing
+    frame.grid_columnconfigure(7, weight=1)  # Extra column for spacing 
     frame.grid(row=0, column=0, sticky='nsew')
+# Configure scrollable_frame to expand
+scrollable_frame.grid_rowconfigure(0, weight=1)  # Allow rows to expand
+scrollable_frame.grid_columnconfigure(0, weight=1)  # Allow columns to expand   
 
 # Configure main_frame to center its contents
 main_frame.grid_rowconfigure(0, weight=1)  # Add weight to center vertically
-main_frame.grid_rowconfigure(7, weight=1)  # Extra row for spacing
+main_frame.grid_rowconfigure(8, weight=1)  # Extra row for spacing
 main_frame.grid_columnconfigure(0, weight=1)  # Add weight to center horizontally
 main_frame.grid_columnconfigure(2, weight=1)  # Extra column for spacing
 
@@ -103,7 +118,7 @@ Button(main_frame, text="Manage Work Order Rates", command=lambda: show_frame(wo
 Button(main_frame, text="Manage Destinations", command=lambda: show_frame(destination_frame)).grid(row=4, column=1, pady=5, sticky="ew")
 Button(main_frame, text="Destination Entries", command=lambda: show_frame(destination_entry_frame)).grid(row=5, column=1, pady=5, sticky="ew")
 Button(main_frame, text="View Destination Entries", command=lambda: show_frame(destination_entry_viewer_frame)).grid(row=6, column=1, pady=5, sticky="ew")
-Button(main_frame, text="Create Main Bills", command=lambda: print("Coming soon...")).grid(row=7, column=1, pady=5, sticky="ew")
+Button(main_frame, text="Create Main Bills", command=lambda: show_frame(main_bill_frame)).grid(row=7, column=1, pady=5, sticky="ew")
 
 # Load Pages
 DealerManager(dealer_frame, main_frame, conn)
@@ -112,6 +127,7 @@ DestinationPage(destination_frame, main_frame, conn)
 DestinationEntryPage(destination_entry_frame, main_frame, conn)
 edit_entry_page = DestinationEntryPage(edit_entry_frame, main_frame, conn)
 DestinationEntryViewer(destination_entry_viewer_frame, main_frame, conn, edit_entry_page)
+MainBillPage(main_bill_frame, main_frame, conn)
 
 # Frame switch
 def show_frame(frame):
