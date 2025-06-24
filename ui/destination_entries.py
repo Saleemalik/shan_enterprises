@@ -30,7 +30,9 @@ class DestinationEntryPage:
             bill_number TEXT,
             date TEXT,
             to_address TEXT,
-            FOREIGN KEY (destination_id) REFERENCES destination(id)
+            main_bill_id INTEGER DEFAULT NULL,
+            FOREIGN KEY (destination_id) REFERENCES destination(id),
+            FOREIGN KEY (main_bill_id) REFERENCES main_bill(id)
         )''')
 
         self.c.execute('''CREATE TABLE IF NOT EXISTS range_entry (
