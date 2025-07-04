@@ -2,6 +2,7 @@ import os, json
 import platform
 from tkinter import *
 from tkinter import ttk, messagebox
+from datetime import datetime
 from collections import defaultdict
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
 from reportlab.lib.pagesizes import A4
@@ -9,6 +10,7 @@ from reportlab.lib import colors
 from num2words import num2words
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
+from tkcalendar import DateEntry
 
 
 class MainBillPage:
@@ -63,7 +65,9 @@ class MainBillPage:
         self.to_address_text.grid(row=2, column=1, pady=5)
 
         Label(form_frame, text="Date of Clearing").grid(row=3, column=0, sticky=W)
-        self.date_entry = Entry(form_frame, width=40)
+        self.date_entry = DateEntry(form_frame, width=37, date_pattern='dd-mm-yyyy', 
+                                    background='darkblue', foreground='white', borderwidth=2)
+        self.date_entry.set_date(datetime.today())  # set today's date as default
         self.date_entry.grid(row=3, column=1, pady=5)
 
         Label(form_frame, text="FACT GST Number").grid(row=4, column=0, sticky=W)
@@ -213,7 +217,7 @@ class MainBillPage:
             "product": self.product_entry.get().strip(),
             "hsn_sac_code": self.hsn_entry.get().strip(),
             "year": self.year_entry.get().strip(),
-            "created_date": self.date_entry.get().strip()  # you can customize this
+            "created_date": datetime.today().strftime("%d-%m-%Y")
         }
 
         if not bill_data["bill_number"] or not bill_data["date_of_clearing"]:
@@ -246,33 +250,69 @@ class MainBillPreviewPage:
         for widget in self.frame.winfo_children():
             widget.destroy()
 
-        Label(self.frame, text="M/S. SHAN ENTERPRISES", font=("Arial", 16, "bold")).pack()
-        Label(self.frame, text="Clearing & Transporting Contractor\n21/4185 C, Meenchandathally, Gate\nP.O. Arts College Calicut – 673018\nMob: 9447004108", justify=LEFT).pack()
-        Label(self.frame, text="GST32ACNFSB060K1ZP", anchor="e", font=("Arial", 10, "bold")).pack(pady=(0, 10))
+        # Header - Fully centered
+        Label(self.frame, text="M/S. SHAN ENTERPRISES", font=("Arial", 16, "bold")).pack(anchor="center")
+        Label(
+            self.frame,
+            text="Clearing & Transporting Contractor\n21/4185 C, Meenchandathally, Gate\nP.O. Arts College Calicut – 673018\nMob: 9447004108",
+            justify=CENTER
+        ).pack()
+        Label(self.frame, text="GST32ACNFSB060K1ZP", font=("Arial", 10, "bold")).pack(anchor="center", pady=(0, 10))
 
-        info_frame = Frame(self.frame)
-        info_frame.pack(padx=10, fill='x')
+        # Container frame for all aligned rows
+        container = Frame(self.frame)
+        container.pack(padx=280, fill='x')  # Increased padding here
 
-        Label(info_frame, text=f"BILL NO: {self.main_bill_data['bill_number']}", anchor="w").grid(row=0, column=0, sticky=W)
-        Label(info_frame, text=f"Date: {self.main_bill_data['created_date']}", anchor="e").grid(row=0, column=1, sticky=E)
+        # Row 1: BILL NO and DATE
+        row1 = Frame(container)
+        row1.pack(fill='x', pady=(2, 2))
+        row1.grid_columnconfigure(0, weight=1)
+        row1.grid_columnconfigure(1, weight=1)
+        Label(row1, text=f"BILL NO: {self.main_bill_data['bill_number']}", anchor="w").grid(row=0, column=0, sticky="w")
+        Label(row1, text=f"Date: {self.main_bill_data['created_date']}", anchor="e").grid(row=0, column=1, sticky="e")
 
-        Label(self.frame, text="TO", font=("Arial", 10, "bold")).pack(anchor="w", padx=10)
-        Label(self.frame, text=self.main_bill_data['to_address'], justify=LEFT).pack(anchor="w", padx=10)
+        # TO Address
+        Label(self.frame, text="TO", font=("Arial", 10, "bold")).pack(anchor="w", padx=280)
+        Label(self.frame, text=self.main_bill_data['to_address'], justify=LEFT).pack(anchor="w", padx=280)
 
-        Label(self.frame, text="Sir,\nRef:- " + self.main_bill_data['letter_note'], justify=LEFT).pack(anchor="w", padx=10)
-        Label(self.frame, text=f"Date of Clearing: {self.main_bill_data['date_of_clearing']}", justify=LEFT).pack(anchor="w", padx=10, pady=(5, 5))
-        Label(self.frame, text=f"PRODUCT: {self.main_bill_data['product']}").pack(anchor="w", padx=10)
-        Label(self.frame, text=f"FACT GST {self.main_bill_data['fact_gst_number']}      WESTHILL RH").pack(anchor="w", padx=10)
-        Label(self.frame, text=f"HSN/SAC CODE : {self.main_bill_data['hsn_sac_code']}        YEAR : {self.main_bill_data['year']}", font=("Arial", 10, "bold")).pack(anchor="w", padx=10, pady=(5, 5))
+        # Row 2: Letter Note and Date of Clearing
+        row2 = Frame(self.frame)
+        row2.pack(fill='x', padx=280, pady=(5, 5))
+        row2.grid_columnconfigure(0, weight=1)
+        row2.grid_columnconfigure(1, weight=1)
+        Label(row2, text=f"Sir,\nRef:- {self.main_bill_data['letter_note']}", justify=LEFT).grid(row=0, column=0, sticky="w")
 
+        date_box = Frame(row2, bd=1, relief="solid", padx=5, pady=3)
+        date_box.grid(row=0, column=1, sticky="e")
+        Label(date_box, text=f"Date of Clearing:\n {self.main_bill_data['date_of_clearing']}").pack()
+
+        # Row 3: PRODUCT and WESTHILL RH
+        row3 = Frame(self.frame)
+        row3.pack(fill="x", padx=280, pady=(3, 0))
+        row3.grid_columnconfigure(0, weight=1)
+        row3.grid_columnconfigure(1, weight=1)
+        Label(row3, text=f"PRODUCT: {self.main_bill_data['product']}", anchor="w").grid(row=0, column=0, sticky="w")
+        Label(row3, text="WESTHILL RH", anchor="e").grid(row=0, column=1, sticky="e")
+
+        # Centered FACT GST
+        Label(self.frame, text=f"FACT GST {self.main_bill_data['fact_gst_number']}", font=("Arial", 10)).pack(anchor="center", pady=(3, 3))
+
+        # Row 4: HSN and Year
+        row4 = Frame(self.frame)
+        row4.pack(fill="x", padx=280)
+        row4.grid_columnconfigure(0, weight=1)
+        row4.grid_columnconfigure(1, weight=1)
+        Label(row4, text=f"HSN/SAC CODE: {self.main_bill_data['hsn_sac_code']}", font=("Arial", 10, "bold")).grid(row=0, column=0, sticky="w")
+        Label(row4, text=f"YEAR: {self.main_bill_data['year']}", font=("Arial", 10, "bold")).grid(row=0, column=1, sticky="e")
+
+        # Table section
         self.build_grouped_table()
 
         # Buttons
         Button(self.frame, text="💾 Save Main Bill", command=self.save_main_bill).pack(pady=(10, 5))
         Button(self.frame, text="🖨️ Export PDF", command=self.export_pdf).pack(pady=(0, 10))
         Button(self.frame, text="← Back", command=lambda: self.home_frame.tkraise()).pack(pady=(0, 10))
-        
-    
+
     def build_grouped_table(self):
         Label(self.frame, text="TRANSPORTATION", font=("Arial", 12, "bold")).pack(pady=(10, 0))
 
@@ -365,9 +405,12 @@ class MainBillPreviewPage:
             round(self.grand_amount, 2)
         ))
 
+        amount = round(self.grand_amount, 2)
+        amount_words = num2words(amount, to='currency', lang='en_IN').replace("euro", "rupees").replace("cents", "paise").capitalize()
+
         Label(
             self.frame,
-            text=f"We are claiming for Rs. {round(self.grand_amount, 2):,.2f} (Rupees in words to be added)",
+            text=f"We are claiming for Rs. {amount:,.2f} ({amount_words})",
             font=("Arial", 10, "bold"),
             pady=10
         ).pack()
