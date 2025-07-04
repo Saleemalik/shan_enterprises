@@ -229,9 +229,7 @@ class MainBillPage:
         # Ensure scroll works
         self.frame.master.update_idletasks()
         self.frame.master.master.configure(scrollregion=self.frame.master.master.bbox("all"))
-        
-
-
+        self.save_form_cache()
 
 class MainBillPreviewPage:
     def __init__(self, frame, home_frame, conn, main_bill_data, destination_entry_ids):
