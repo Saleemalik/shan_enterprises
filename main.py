@@ -118,25 +118,62 @@ main_frame.grid_columnconfigure(2, weight=1)  # Spacer right
 dashboard_label = Label(main_frame, text="Billing Dashboard", font=("Arial", 18))
 dashboard_label.grid(row=1, column=1, pady=20, sticky="ew")
 
-# Navigation Buttons
-Button(main_frame, text="Manage Dealers", command=lambda: show_frame(dealer_frame)).grid(row=2, column=1, pady=5, sticky="ew")
-Button(main_frame, text="Manage Work Order Rates", command=lambda: show_frame(workorder_frame)).grid(row=3, column=1, pady=5, sticky="ew")
-Button(main_frame, text="Manage Destinations", command=lambda: show_frame(destination_frame)).grid(row=4, column=1, pady=5, sticky="ew")
-Button(main_frame, text="Destination Entries", command=lambda: show_frame(destination_entry_frame)).grid(row=5, column=1, pady=5, sticky="ew")
-Button(main_frame, text="View Destination Entries", command=lambda: show_frame(destination_entry_viewer_frame)).grid(row=6, column=1, pady=5, sticky="ew")
-Button(main_frame, text="Create Main Bills", command=lambda: show_frame(main_bill_frame)).grid(row=7, column=1, pady=5, sticky="ew")
-Button(main_frame, text="View Main Bills", command=lambda: show_frame(main_bill_list_frame)).grid(row=8, column=1, pady=5, sticky="ew")
+Button(main_frame, text="Manage Dealers", command=lambda: show_frame_by_key("dealer")).grid(row=2, column=1, pady=5, sticky="ew")
+Button(main_frame, text="Manage Work Order Rates", command=lambda: show_frame_by_key("workorder")).grid(row=3, column=1, pady=5, sticky="ew")
+Button(main_frame, text="Manage Destinations", command=lambda: show_frame_by_key("destination")).grid(row=4, column=1, pady=5, sticky="ew")
+Button(main_frame, text="Destination Entries", command=lambda: show_frame_by_key("destination_entry")).grid(row=5, column=1, pady=5, sticky="ew")
+Button(main_frame, text="View Destination Entries", command=lambda: show_frame_by_key("destination_entry_viewer")).grid(row=6, column=1, pady=5, sticky="ew")
+Button(main_frame, text="Create Main Bills", command=lambda: show_frame_by_key("main_bill")).grid(row=7, column=1, pady=5, sticky="ew")
+Button(main_frame, text="View Main Bills", command=lambda: show_frame_by_key("main_bill_list")).grid(row=8, column=1, pady=5, sticky="ew")
 
 
-# Load Pages (commented out since custom modules are unavailable)
-DealerManager(dealer_frame, main_frame, conn)
-WorkOrderRatePage(workorder_frame, main_frame, conn)
-DestinationPage(destination_frame, main_frame, conn)
-DestinationEntryPage(destination_entry_frame, main_frame, conn)
-edit_entry_page = DestinationEntryPage(edit_entry_frame, main_frame, conn)
-DestinationEntryViewer(destination_entry_viewer_frame, main_frame, conn, edit_entry_page)
-MainBillPage(main_bill_frame, main_frame, conn)
-ViewMainBillsPage(main_bill_list_frame, main_frame, conn)
+# Lazy-loaded frames dictionary
+loaded_frames = {}
+
+def show_frame_by_key(frame_key):
+    # If not yet loaded, initialize the frame
+    if frame_key not in loaded_frames:
+        if frame_key == "dealer":
+            frame = Frame(scrollable_frame)
+            frame.grid(row=0, column=0, sticky='nsew')
+            DealerManager(frame, main_frame, conn)
+        elif frame_key == "workorder":
+            frame = Frame(scrollable_frame)
+            frame.grid(row=0, column=0, sticky='nsew')
+            WorkOrderRatePage(frame, main_frame, conn)
+        elif frame_key == "destination":
+            frame = Frame(scrollable_frame)
+            frame.grid(row=0, column=0, sticky='nsew')
+            DestinationPage(frame, main_frame, conn)
+        elif frame_key == "destination_entry":
+            frame = Frame(scrollable_frame)
+            frame.grid(row=0, column=0, sticky='nsew')
+            DestinationEntryPage(frame, main_frame, conn)
+        elif frame_key == "destination_entry_viewer":
+            frame = Frame(scrollable_frame)
+            frame.grid(row=0, column=0, sticky='nsew')
+            edit_entry_frame = Frame(scrollable_frame)
+            edit_entry_frame.grid(row=0, column=0, sticky='nsew')
+            edit_entry_page = DestinationEntryPage(edit_entry_frame, main_frame, conn)
+            DestinationEntryViewer(frame, main_frame, conn, edit_entry_page)
+        elif frame_key == "main_bill":
+            frame = Frame(scrollable_frame)
+            frame.grid(row=0, column=0, sticky='nsew')
+            MainBillPage(frame, main_frame, conn)
+        elif frame_key == "main_bill_list":
+            frame = Frame(scrollable_frame)
+            frame.grid(row=0, column=0, sticky='nsew')
+            ViewMainBillsPage(frame, main_frame, conn)
+        else:
+            return
+
+        loaded_frames[frame_key] = frame
+
+    # Raise the requested frame
+    loaded_frames[frame_key].tkraise()
+    root.update_idletasks()
+    update_canvas()
+
 
 # Frame switch
 def show_frame(frame):
