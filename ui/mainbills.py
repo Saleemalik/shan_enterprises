@@ -3,6 +3,7 @@ from tkinter import *
 from tkinter import ttk
 from ui.mainbillentry import MainBillPreviewPage
 from tkinter import messagebox
+import pandas as pd
 
 class ViewMainBillsPage:
     def __init__(self, frame, home_frame, conn):
@@ -145,3 +146,77 @@ class ViewMainBillsPage:
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to delete bill:\n{e}")
+
+
+    def import_dealers_from_file(self, file_path):
+        try:
+            # Read the Excel file
+            excel_file = pd.ExcelFile(file_path)
+            
+            # Get all sheet names
+            sheet_names = excel_file.sheet_names
+            
+            for sheet_name in sheet_names:
+                # Skip empty sheets (like Sheet1)
+                if sheet_name == "Sheet1":
+                    continue
+                    
+                # Check if destination exists by name or place
+                self.cursor.execute(
+                    "SELECT id FROM destination WHERE name = ? OR place = ?",
+                    (sheet_name, sheet_name)
+                )
+                dest_result = self.cursor.fetchone()
+                
+                if dest_result:
+                    destination_id = dest_result[0]
+                else:
+                    # Insert new destination if no match found
+                    self.cursor.execute(
+                        "INSERT INTO destination (name, place) VALUES (?, ?)",
+                        (sheet_name, sheet_name)
+                    )
+                    self.conn.commit()
+                    destination_id = self.cursor.lastrowid
+                
+                # Read the sheet data
+                df = pd.read_excel(file_path, sheet_name=sheet_name)
+                
+                # Ensure column names match the expected format
+                df.columns = ['Dealer code', 'NAME', 'Place', 'Pin Code', 'Mob No.', 'Distance']
+                
+                # Insert each row into the dealer table
+                for index, row in df.iterrows():
+                    code = str(row['Dealer code']).strip()
+                    name = str(row['NAME']).strip()
+                    place = str(row['Place']).strip()
+                    pincode = str(row['Pin Code']).strip()
+                    mobile = str(row['Mob No.']).strip() if not pd.isna(row['Mob No.']) else ""
+                    distance = float(row['Distance']) if not pd.isna(row['Distance']) else 0.0
+                    
+                    # Skip rows with missing required fields
+                    if not code or not name:
+                        continue
+                    
+                    try:
+                        self.cursor.execute(
+                            """
+                            INSERT OR IGNORE INTO dealer 
+                            (code, name, place, pincode, mobile, distance, destination_id) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (code, name, place, pincode, mobile, distance, destination_id)
+                        )
+                    except Exception as e:
+                        print(f"Error inserting dealer {code}: {str(e)}")
+                        continue
+                
+                self.conn.commit()
+            
+            # Reload the dealers in the UI
+            self.load_dealers()
+            self.clear_fields()
+            messagebox.showinfo("Success", f"Dealers imported successfully from {len(sheet_names)-1} destinations")
+            
+        except Exception as e:
+            messagebox.showerror("Import Error", f"Failed to import dealers: {str(e)}")
