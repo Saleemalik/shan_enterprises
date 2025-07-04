@@ -7,6 +7,7 @@ from ui.destinations import DestinationPage
 from ui.destination_entries import DestinationEntryPage
 from ui.destinationentryview import DestinationEntryViewer
 from ui.mainbillentry import MainBillPage
+from ui.mainbills import ViewMainBillsPage
 
 # DB setup
 conn = sqlite3.connect("billing_app.db")
@@ -94,9 +95,11 @@ destination_entry_frame = Frame(scrollable_frame)
 destination_entry_viewer_frame = Frame(scrollable_frame)
 edit_entry_frame = Frame(scrollable_frame)
 main_bill_frame = Frame(scrollable_frame)
+main_bill_list_frame = Frame(scrollable_frame)
+
 
 # Configure frames to expand
-for frame in (main_frame, dealer_frame, workorder_frame, destination_frame, destination_entry_frame, destination_entry_viewer_frame, edit_entry_frame, main_bill_frame):
+for frame in (main_frame, dealer_frame, workorder_frame, destination_frame, destination_entry_frame, destination_entry_viewer_frame, edit_entry_frame, main_bill_frame, main_bill_list_frame):
     frame.grid(row=0, column=0, sticky='nsew')
     frame.grid_rowconfigure(0, weight=1)
     frame.grid_columnconfigure(0, weight=1)
@@ -106,7 +109,7 @@ scrollable_frame.grid_columnconfigure(0, weight=1)
 
 # Configure main_frame for vertical centering
 main_frame.grid_rowconfigure(0, weight=1)  # Spacer above
-main_frame.grid_rowconfigure(8, weight=1)  # Spacer below
+main_frame.grid_rowconfigure(9, weight=1)  # Spacer below
 main_frame.grid_columnconfigure(0, weight=1)  # Spacer left
 main_frame.grid_columnconfigure(1, weight=0)  # Content area
 main_frame.grid_columnconfigure(2, weight=1)  # Spacer right
@@ -122,6 +125,8 @@ Button(main_frame, text="Manage Destinations", command=lambda: show_frame(destin
 Button(main_frame, text="Destination Entries", command=lambda: show_frame(destination_entry_frame)).grid(row=5, column=1, pady=5, sticky="ew")
 Button(main_frame, text="View Destination Entries", command=lambda: show_frame(destination_entry_viewer_frame)).grid(row=6, column=1, pady=5, sticky="ew")
 Button(main_frame, text="Create Main Bills", command=lambda: show_frame(main_bill_frame)).grid(row=7, column=1, pady=5, sticky="ew")
+Button(main_frame, text="View Main Bills", command=lambda: show_frame(main_bill_list_frame)).grid(row=8, column=1, pady=5, sticky="ew")
+
 
 # Load Pages (commented out since custom modules are unavailable)
 DealerManager(dealer_frame, main_frame, conn)
@@ -131,6 +136,7 @@ DestinationEntryPage(destination_entry_frame, main_frame, conn)
 edit_entry_page = DestinationEntryPage(edit_entry_frame, main_frame, conn)
 DestinationEntryViewer(destination_entry_viewer_frame, main_frame, conn, edit_entry_page)
 MainBillPage(main_bill_frame, main_frame, conn)
+ViewMainBillsPage(main_bill_list_frame, main_frame, conn)
 
 # Frame switch
 def show_frame(frame):
