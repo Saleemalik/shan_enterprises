@@ -1,3 +1,6 @@
 *.db
 *.sqbpro
 __pycache__
+env
+bill_report*
+main_bill_*
