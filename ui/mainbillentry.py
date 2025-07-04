@@ -23,7 +23,7 @@ class MainBillPage:
         self.c.execute('''
             CREATE TABLE IF NOT EXISTS main_bill (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                bill_number TEXT,
+                bill_number TEXT UNIQUE,
                 letter_note TEXT,
                 to_address TEXT,
                 date_of_clearing TEXT,
@@ -101,6 +101,13 @@ class MainBillPage:
 
         self.load_destination_entries()
         self.load_form_cache()
+        
+        self.frame.bind_all("<Control-r>", self.reload_entries)
+        self.reload_entries()
+
+    def reload_entries(self, event=None):
+        self.load_destination_entries()
+        self.load_form_cache()
 
         
     def load_destination_entries(self):
@@ -109,7 +116,7 @@ class MainBillPage:
             SELECT de.id, de.date, d.name, de.bill_number, de.to_address
             FROM destination_entry de
             JOIN destination d ON de.destination_id = d.id
-            WHERE de.main_bill_id IS NULL
+            WHERE de.main_bill_id IS NULL OR de.main_bill_id = ""
             ORDER BY de.date DESC
         ''')
 
@@ -135,16 +142,28 @@ class MainBillPage:
             with open("main_bill_cache.json", "r") as f:
                 data = json.load(f)
 
+            # Clear and insert into each widget
+            self.bill_number_entry.delete(0, END)
             self.bill_number_entry.insert(0, data.get("bill_number", ""))
+
+            self.letter_note_text.delete("1.0", END)
             self.letter_note_text.insert("1.0", data.get("letter_note", ""))
+
+            self.to_address_text.delete("1.0", END)
             self.to_address_text.insert("1.0", data.get("to_address", ""))
-            self.date_entry.insert(0, data.get("date_of_clearing", ""))
+
+            self.gst_entry.delete(0, END)
             self.gst_entry.insert(0, data.get("fact_gst_number", ""))
+
             self.product_entry.delete(0, END)
             self.product_entry.insert(0, data.get("product", "FACTOMFOS"))
+
+            self.hsn_entry.delete(0, END)
             self.hsn_entry.insert(0, data.get("hsn_sac_code", ""))
+
+            self.year_entry.delete(0, END)
             self.year_entry.insert(0, data.get("year", ""))
-            
+
     def generate_preview(self):
         selected = self.dest_tree.selection()
         if not selected:
@@ -417,24 +436,61 @@ class MainBillPreviewPage:
 
     def save_main_bill(self):
         try:
-            self.c.execute('''
-                INSERT INTO main_bill (
-                    bill_number, letter_note, to_address, date_of_clearing,
-                    fact_gst_number, product, hsn_sac_code, year
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                self.main_bill_data["bill_number"],
-                self.main_bill_data["letter_note"],
-                self.main_bill_data["to_address"],
-                self.main_bill_data["date_of_clearing"],
-                self.main_bill_data["fact_gst_number"],
-                self.main_bill_data["product"],
-                self.main_bill_data["hsn_sac_code"],
-                self.main_bill_data["year"]
-            ))
-            self.conn.commit()
-            main_bill_id = self.c.lastrowid
+            # Check if the bill number already exists
+            self.c.execute("SELECT id FROM main_bill WHERE bill_number = ?", (self.main_bill_data["bill_number"],))
+            existing = self.c.fetchone()
 
+            if existing:
+                main_bill_id = existing[0]
+                # Ask for confirmation before updating
+                confirm = messagebox.askyesno(
+                    "Confirm Update",
+                    f"Bill number '{self.main_bill_data['bill_number']}' already exists.\nDo you want to update it?"
+                )
+                if not confirm:
+                    return  # Cancel the save if user selects "No"
+
+                # Update existing main bill
+                self.c.execute('''
+                    UPDATE main_bill SET
+                        letter_note = ?, to_address = ?, date_of_clearing = ?,
+                        fact_gst_number = ?, product = ?, hsn_sac_code = ?, year = ?
+                    WHERE id = ?
+                ''', (
+                    self.main_bill_data["letter_note"],
+                    self.main_bill_data["to_address"],
+                    self.main_bill_data["date_of_clearing"],
+                    self.main_bill_data["fact_gst_number"],
+                    self.main_bill_data["product"],
+                    self.main_bill_data["hsn_sac_code"],
+                    self.main_bill_data["year"],
+                    main_bill_id
+                ))
+            else:
+                # Insert new main bill
+                self.c.execute('''
+                    INSERT INTO main_bill (
+                        bill_number, letter_note, to_address, date_of_clearing,
+                        fact_gst_number, product, hsn_sac_code, year
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    self.main_bill_data["bill_number"],
+                    self.main_bill_data["letter_note"],
+                    self.main_bill_data["to_address"],
+                    self.main_bill_data["date_of_clearing"],
+                    self.main_bill_data["fact_gst_number"],
+                    self.main_bill_data["product"],
+                    self.main_bill_data["hsn_sac_code"],
+                    self.main_bill_data["year"]
+                ))
+                self.conn.commit()
+                main_bill_id = self.c.lastrowid
+
+            # Clear existing linked entries (in case of update)
+            self.c.execute("DELETE FROM main_bill_entries WHERE main_bill_id = ?", (main_bill_id,))
+            self.c.execute("UPDATE destination_entry SET main_bill_id = NULL WHERE main_bill_id = ?", (main_bill_id,))
+
+            # Insert updated entries
             for de_id in self.destination_entry_ids:
                 self.c.execute("INSERT INTO main_bill_entries (main_bill_id, destination_entry_id) VALUES (?, ?)", (main_bill_id, de_id))
                 self.c.execute("UPDATE destination_entry SET main_bill_id=? WHERE id=?", (main_bill_id, de_id))
@@ -442,14 +498,14 @@ class MainBillPreviewPage:
             self.conn.commit()
             messagebox.showinfo("Saved", f"Main Bill #{self.main_bill_data['bill_number']} saved successfully.")
             self.home_frame.tkraise()
+
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save main bill:\n{e}")
-            
-    def export_pdf(self):
 
+    def export_pdf(self):
+        
         filename = f"main_bill_{self.main_bill_data['bill_number']}.pdf"
-        doc = SimpleDocTemplate(filename, pagesize=A4,
-                                rightMargin=20, leftMargin=20, topMargin=30, bottomMargin=20)
+        doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=20, leftMargin=20, topMargin=30, bottomMargin=20)
 
         styles = getSampleStyleSheet()
         styles.add(ParagraphStyle(name='SmallBold', fontSize=9, fontName='Helvetica-Bold'))
@@ -457,34 +513,84 @@ class MainBillPreviewPage:
         styles.add(ParagraphStyle(name='Justify', alignment=TA_CENTER))
         elements = []
 
-        # Header
-        elements.append(Paragraph("<b>M/S. SHAN ENTERPRISES</b>", styles['Title']))
-        elements.append(Paragraph(
-            "Clearing & Transporting Contractor<br/>21/4185 C, Meenchandathally, Gate<br/>P.O. Arts College Calicut – 673018<br/>Mob: 9447004108",
-            styles['Normal']))
-        elements.append(Paragraph("<b>GST32ACNFSB060K1ZP</b>", styles['Normal']))
-        elements.append(Spacer(1, 12))
+        # Header paragraph
+        header_para = Paragraph(
+            "<font size=14><b>M/S. SHAN ENTERPRISES</b></font><br/>"
+            "Clearing & Transporting Contractor<br/>"
+            "21/4185 C, Meenchandathally, Gate<br/>"
+            "P.O. Arts College Calicut – 673018<br/>"
+            "Mob: 9447004108",
+            styles['Normal']
+        )
 
-        # Bill Info Table
-        info_table = [
+        # GST aligned to right
+        gst_para = Paragraph("<b>GST32ACNFSB060K1ZP</b>", styles['Normal'])
+
+        # Table to align left+center content with GST right
+        header_table = Table(
+            [[header_para, gst_para]],
+            colWidths=[360, 160]  # adjust widths as per A4 width minus margins
+        )
+        header_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+            ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+
+        elements.append(header_table)
+        elements.append(Spacer(1, 12))
+        # Compact box for Date of Clearing
+        date_paragraph = Paragraph(
+            f"<b>Date of Clearing:</b><br/>{self.main_bill_data['date_of_clearing']}", styles['Normal']
+        )
+
+        # Narrower column, minimal padding
+        date_box_table = Table([[date_paragraph]], colWidths=[100], hAlign='LEFT')
+        date_box_table.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ]))
+
+        # Info rows as a structured table
+        # Now replace the cell in info_rows with this table
+        info_rows = [
             [f"BILL NO: {self.main_bill_data['bill_number']}", f"Date: {self.main_bill_data['created_date']}"],
             ["TO", ""],
             [self.main_bill_data['to_address'], ""],
-            [f"Sir, Ref:- {self.main_bill_data['letter_note']}", ""],
-            [f"Date of Clearing: {self.main_bill_data['date_of_clearing']}", ""],
-            [f"PRODUCT: {self.main_bill_data['product']}", ""],
-            [f"FACT GST {self.main_bill_data['fact_gst_number']}     WESTHILL RH", ""],
-            [f"HSN/SAC CODE: {self.main_bill_data['hsn_sac_code']}     YEAR: {self.main_bill_data['year']}", ""],
+            [f"Sir,\n Ref:- {self.main_bill_data['letter_note']}", date_box_table],  # ← this line
+            [f"PRODUCT: {self.main_bill_data['product']}", "WESTHILL RH"],
+            [f"FACT GST {self.main_bill_data['fact_gst_number']}", ""],
+            [f"HSN/SAC CODE: {self.main_bill_data['hsn_sac_code']}", f"YEAR: {self.main_bill_data['year']}"],
         ]
-        elements.append(Table(info_table, colWidths=[280, 250], hAlign='LEFT'))
+        col_widths = [280, 250]
+        elements.append(Table(info_rows, colWidths=col_widths, hAlign='LEFT', style=[
+            ('LEFTPADDING', (0, 0), (-1, -1), 30),   # increase as needed
+            ('RIGHTPADDING', (0, 0), (-1, -1), 30),
+            ('SPAN', (0, 5), (1, 5)),  # Centered GST row
+            ('ALIGN', (0, 5), (1, 5), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('SPAN', (0, 5), (1, 5)), # Span GST across both columns
+            ('ALIGN', (0, 5), (0, 5), 'CENTER'),
+        ]))
+        
         elements.append(Spacer(1, 10))
 
-        # Table Header
+        # Table headers
         table_data = [[
             'Sl. No.', 'Destinations', 'Qty', 'Total Qty', 'KM', 'MT x KM', 'Total MT x KM', 'Rate', 'Amount Rs.', 'Total Amount'
         ]]
 
-        # Query dealer entries (correct destination from dealer's destination_id)
+        # Query and group dealer entries
         placeholders = ",".join("?" for _ in self.destination_entry_ids)
         self.c.execute(f'''
             SELECT rr.from_km, rr.to_km, rr.rate, rr.is_mtk,
@@ -505,7 +611,7 @@ class MainBillPreviewPage:
         # Group by slab
         grouped = defaultdict(list)
         for row in rows:
-            key = (row[0], row[1], row[2], row[3])  # from_km, to_km, rate, is_mtk
+            key = (row[0], row[1], row[2], row[3])
             grouped[key].append(row)
 
         table_styles = []
@@ -538,20 +644,19 @@ class MainBillPreviewPage:
                 slab_amount += amount
                 row_index += 1
 
-            # Add merged total values into the last row of the slab
-            last_row = row_index - 1            
-            table_data[start_row][3] = f"{slab_mt:.2f}"       # Total Qty
-            table_data[start_row][6] = f"{slab_mtk:.2f}"      # Total MTK
-            table_data[start_row][9] = f"{slab_amount:.2f}"   # Total Amount
+            # Merge total columns
+            table_data[start_row][3] = f"{slab_mt:.2f}"
+            table_data[start_row][6] = f"{slab_mtk:.2f}"
+            table_data[start_row][9] = f"{slab_amount:.2f}"
 
-            # Apply SPANs
+            # Add row spans
             table_styles.extend([
-                ('SPAN', (0, start_row), (0, last_row)),  # Sl No
-                ('SPAN', (3, start_row), (3, last_row)),  # Total Qty
-                ('SPAN', (4, start_row), (4, last_row)),  # KM
-                ('SPAN', (6, start_row), (6, last_row)),  # Total MTK
-                ('SPAN', (7, start_row), (7, last_row)),  # Rate
-                ('SPAN', (9, start_row), (9, last_row)),  # Total Amount
+                ('SPAN', (0, start_row), (0, row_index - 1)),
+                ('SPAN', (3, start_row), (3, row_index - 1)),
+                ('SPAN', (4, start_row), (4, row_index - 1)),
+                ('SPAN', (6, start_row), (6, row_index - 1)),
+                ('SPAN', (7, start_row), (7, row_index - 1)),
+                ('SPAN', (9, start_row), (9, row_index - 1)),
             ])
 
             sl_no += 1
@@ -565,38 +670,34 @@ class MainBillPreviewPage:
             "", "GRAND TOTAL", "", f"{grand_mt:.2f}", "", "", f"{grand_mtk:.2f}", "", "", f"{grand_amount:.2f}"
         ])
 
-        # Table style
-        table_styles += [
+        # Table construction
+        tbl = Table(table_data, colWidths=[35, 90, 40, 55, 55, 55, 70, 40, 70, 75])
+        tbl.setStyle(TableStyle(table_styles + [
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 10),
             ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
             ('FONTSIZE', (0, 1), (-1, -1), 8),
             ('GRID', (0, 0), (-1, -1), 0.25, colors.black),
             ('BOX', (0, 0), (-1, -1), 1, colors.black),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]
-
-        # Table construction
-        tbl = Table(table_data, colWidths = [35, 90, 40, 55, 55, 55, 70, 40, 70, 75])
-        tbl.setStyle(TableStyle(table_styles))
+        ]))
         elements.append(tbl)
         elements.append(Spacer(1, 12))
 
-        # Amount in words
-        amount_words = num2words(grand_amount, lang='en_IN').replace("euro", "rupees").title() + " Only"
+        # Rupees in words
+        grand_amount_str = f"{grand_amount:,.2f}".replace(",", "")
+        amount_words = num2words((float(grand_amount_str)), lang='en_IN').replace("euro", "rupees").title() + " Only"
         elements.append(Paragraph(
             f"We are claiming for Rs. {grand_amount:,.2f} ({amount_words}) for Clearing & Transportation Bill of Fertilizer.",
             styles['Small']
         ))
 
-        # Build PDF
+        # Build and open PDF
         doc.build(elements)
-
         try:
             if platform.system() == "Windows":
                 os.startfile(filename)
