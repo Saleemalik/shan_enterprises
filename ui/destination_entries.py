@@ -6,6 +6,8 @@ from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import os
+import json
+from tkcalendar import DateEntry
 
 class DestinationEntryPage:
     def __init__(self, frame, home_frame, conn):
@@ -115,8 +117,8 @@ class DestinationEntryPage:
         self.bill_number_entry.grid(row=2, column=1)
 
         Label(form, text="Date").grid(row=3, column=0)
-        self.date_entry = Entry(form)
-        self.date_entry.insert(0, datetime.now().strftime("%Y-%m-%d"))
+        self.date_entry = DateEntry(form, width=37, date_pattern='dd-mm-yyyy', 
+                                    background='darkblue', foreground='white', borderwidth=2)
         self.date_entry.grid(row=3, column=1)
 
         Label(form, text="To Address").grid(row=4, column=0, pady=5)
@@ -129,7 +131,38 @@ class DestinationEntryPage:
         self.range_container.pack(fill='both', expand=True)
 
         self.load_destinations()
+        self.load_entry_cache()
         self.save_button.pack(pady=10)
+        
+    def save_entry_cache(self):
+        cache = {
+            "destination": self.destination_cb.get(),
+            "letter_note": self.letter_note_text.get("1.0", "end").strip(),
+            "bill_number": self.bill_number_entry.get().strip(),
+            "date": self.date_entry.get().strip(),
+            "to_address": self.to_address_text.get("1.0", "end").strip(),
+        }
+
+        with open("destination_entry_cache.json", "w") as f:
+            json.dump(cache, f)
+            
+    def load_entry_cache(self):
+        if os.path.exists("destination_entry_cache.json"):
+            with open("destination_entry_cache.json", "r") as f:
+                data = json.load(f)
+
+            self.destination_cb.set(data.get("destination", ""))
+            self.letter_note_text.delete("1.0", "end")
+            self.letter_note_text.insert("1.0", data.get("letter_note", ""))
+
+            self.bill_number_entry.delete(0, "end")
+            self.bill_number_entry.insert(0, data.get("bill_number", ""))
+
+            self.date_entry.delete(0, "end")
+            self.date_entry.insert(0, data.get("date", datetime.now().strftime("%Y-%m-%d")))
+
+            self.to_address_text.delete("1.0", "end")
+            self.to_address_text.insert("1.0", data.get("to_address", ""))
 
     def save_entries(self):
         selected_dest = self.destination_cb.get()
@@ -202,6 +235,7 @@ class DestinationEntryPage:
             self.range_entry_ids = saved_range_ids
             self.dealer_entry_ids = saved_dealer_ids
             self.update_buttons_to_edit_mode()
+            self.save_entry_cache()
 
         except Exception as e:
             self.conn.rollback()
