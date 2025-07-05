@@ -1,7 +1,8 @@
 from tkinter import *
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 from tkinter.ttk import Treeview, Combobox
 from datetime import datetime
+import pandas as pd
 
 class DealerManager:
     def __init__(self, master_frame, home_frame, conn):
@@ -39,10 +40,11 @@ class DealerManager:
         self.destination_map = {f"{id} - {name}": id for id, name in dest_rows}
         self.destination_cb['values'] = list(self.destination_map.keys())
 
-
         Button(self.form, text="Add Dealer", command=self.add_dealer).grid(row=7, column=0, pady=10)
         Button(self.form, text="Update Dealer", command=self.update_dealer).grid(row=7, column=1, pady=10)
         Button(self.form, text="Delete Dealer", command=self.delete_dealer).grid(row=7, column=2, pady=10)
+        
+        Button(self.form, text="Import Dealers from File", command=self.import_dealers_from_file).grid(row=8, column=1, pady=10)
 
         self.dealer_list = Treeview(
             self.master_frame,
@@ -162,6 +164,107 @@ class DealerManager:
             except Exception as e:
                 messagebox.showerror("Database Error", str(e))
 
+
+    def import_dealers_from_file(self, file_path=None):
+        # If no file_path is provided, open file dialog
+        if not file_path:
+            file_path = filedialog.askopenfilename(
+                title="Select Excel File",
+                filetypes=[("Excel files", "*.xlsx *.xls")]
+            )
+            if not file_path:
+                return  # User cancelled the file selection
+        
+        try:
+            # Read the Excel file
+            excel_file = pd.ExcelFile(file_path)
+            
+            # Get all sheet names
+            sheet_names = excel_file.sheet_names
+            
+            skipped_rows = []
+            
+            for sheet_name in sheet_names:
+                # Skip empty sheets (like Sheet1)
+                if sheet_name == "Sheet1":
+                    continue
+                    
+                # Check if destination exists by name or place (case-insensitive)
+                self.cursor.execute(
+                    "SELECT id FROM destination WHERE UPPER(name) = UPPER(?) OR UPPER(place) = UPPER(?)",
+                    (sheet_name, sheet_name)
+                )
+                dest_result = self.cursor.fetchone()
+                
+                if dest_result:
+                    destination_id = dest_result[0]
+                else:
+                    # Insert new destination if no match found
+                    self.cursor.execute(
+                        "INSERT INTO destination (name, place) VALUES (?, ?)",
+                        (sheet_name, sheet_name)
+                    )
+                    self.conn.commit()
+                    destination_id = self.cursor.lastrowid
+                
+                # Read the sheet data
+                df = pd.read_excel(file_path, sheet_name=sheet_name)
+                
+                # Ensure column names match the expected format
+                df.columns = ['Dealer code', 'NAME', 'Place', 'Pin Code', 'Mob No.', 'Distance']
+                
+                # Insert each row into the dealer table
+                for index, row in df.iterrows():
+                    code = str(row['Dealer code']).strip()
+                    # append 'FOL' to the dealer name
+                    name = f"{str(row['NAME']).strip()} FOL"
+                    place = str(row['Place']).strip()
+                    pincode = str(row['Pin Code']).strip()
+                    mobile = str(row['Mob No.']).strip() if not pd.isna(row['Mob No.']) else ""
+                    
+                    # Handle distance: set to None for 'NIL' or non-numeric values
+                    distance = None
+                    if not pd.isna(row['Distance']):
+                        if str(row['Distance']).strip().upper() == 'NIL':
+                            skipped_rows.append(f"Sheet: {sheet_name}, Dealer: {code}, Distance set to NULL (was 'NIL')")
+                        else:
+                            try:
+                                distance = float(row['Distance'])
+                            except (ValueError, TypeError):
+                                skipped_rows.append(f"Sheet: {sheet_name}, Dealer: {code}, Distance set to NULL (invalid: {row['Distance']})")
+                    
+                    # Skip rows with missing required fields
+                    if not code or not name:
+                        skipped_rows.append(f"Sheet: {sheet_name}, Row: {index+2}, Missing code or name")
+                        continue
+                    
+                    try:
+                        self.cursor.execute(
+                            """
+                            INSERT OR IGNORE INTO dealer 
+                            (code, name, place, pincode, mobile, distance, destination_id) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (code, name, place, pincode, mobile, distance, destination_id)
+                        )
+                    except Exception as e:
+                        skipped_rows.append(f"Sheet: {sheet_name}, Dealer: {code}, Error: {str(e)}")
+                        continue
+                
+                self.conn.commit()
+            
+            # Reload the dealers in the UI
+            self.load_dealers()
+            self.clear_fields()
+            
+            # Show success message with warning about skipped rows or NULL distances
+            message = f"Dealers imported successfully from {len(sheet_names)-1} destinations"
+            if skipped_rows:
+                message += f"\n\nWarnings:\n" + "\n".join(skipped_rows)
+            messagebox.showinfo("Success", message)
+            
+        except Exception as e:
+            messagebox.showerror("Import Error", f"Failed to import dealers: {str(e)}")
 
 # To initialize the page:
 # DealerManager(frame, home_frame, conn)
