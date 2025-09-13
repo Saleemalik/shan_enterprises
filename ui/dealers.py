@@ -45,6 +45,20 @@ class DealerManager:
         Button(self.form, text="Delete Dealer", command=self.delete_dealer).grid(row=7, column=2, pady=10)
         
         Button(self.form, text="Import Dealers from File", command=self.import_dealers_from_file).grid(row=8, column=1, pady=10)
+        
+        # Search bar
+        search_frame = Frame(self.master_frame)
+        search_frame.pack(fill="x", padx=10, pady=5)
+
+        Label(search_frame, text="Search:").pack(side="left", padx=(0, 5))
+        self.search_var = StringVar()
+        search_entry = Entry(search_frame, textvariable=self.search_var)
+        search_entry.pack(side="left", fill="x", expand=True)
+
+        Button(search_frame, text="Go", command=self.search_dealers).pack(side="left", padx=5)
+        Button(search_frame, text="Clear", command=self.load_dealers).pack(side="left")
+        
+        search_entry.bind("<Return>", lambda e: self.search_dealers())
 
         self.dealer_list = Treeview(
             self.master_frame,
@@ -60,6 +74,30 @@ class DealerManager:
         self.dealer_list.pack(fill="both", expand=True, padx=10, pady=10)
 
         self.load_dealers()
+        
+    def search_dealers(self):
+        query = self.search_var.get().strip()
+        if not query:
+            self.load_dealers()
+            return
+
+        for row in self.dealer_list.get_children():
+            self.dealer_list.delete(row)
+
+        sql = """
+            SELECT dealer.id, dealer.code, dealer.name, dealer.place, dealer.pincode, dealer.mobile,
+                dealer.distance, destination.name
+            FROM dealer
+            LEFT JOIN destination ON dealer.destination_id = destination.id
+            WHERE dealer.code LIKE ? OR dealer.name LIKE ? OR dealer.place LIKE ? 
+                OR dealer.mobile LIKE ? OR destination.name LIKE ?
+        """
+        like_query = f"%{query}%"
+        self.cursor.execute(sql, (like_query, like_query, like_query, like_query, like_query))
+
+        for row in self.cursor.fetchall():
+            self.dealer_list.insert("", END, values=row)
+
 
     def get_entry(self, field):
         return self.entries[field].get().strip()
