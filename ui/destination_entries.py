@@ -2,7 +2,7 @@ from tkinter import *
 from tkinter import ttk, messagebox
 from datetime import datetime
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import os
@@ -766,10 +766,11 @@ class DestinationEntryPage:
             dealer_entries = self.c.fetchall()
 
             table_data = [["SL NO", "Date", "MDA NO", "Description", "Despatched to", "Bag", "MT", "KM", "MTK", "Rate", "Amount", "Remarks"]]
-            for idx, (_,despatched_to, km, no_bags, mt, mtk, amount, mda_number, entry_date, description, remarks) in enumerate(dealer_entries, 1):
+            for idx, (_, despatched_to, km, no_bags, mt, mtk, amount, mda_number, entry_date, description, remarks) in enumerate(dealer_entries, 1):
                 table_data.append([
-                    str(idx), entry_date, mda_number, description, despatched_to, str(no_bags), f"{mt:.3f}", str(km), f"{mtk:.2f}", f"₹{rate:.2f}", f"₹{amount:.2f}", remarks or ''
-               ])
+                    str(idx), entry_date, mda_number, description, despatched_to,
+                    str(no_bags), f"{mt:.3f}", str(km), f"{mtk:.2f}", f"{rate:.2f}", f"{amount:.2f}", remarks or ''
+            ])
 
             # Add total row
             self.c.execute("""
@@ -777,21 +778,22 @@ class DestinationEntryPage:
                 FROM range_entry WHERE id = ?
             """, (range_entry_id,))
             total_bags, total_mt, total_mtk, total_amount = self.c.fetchone()
-            table_data.append(["", "", "", "", "TOTAL", str(total_bags), f"{total_mt:.3f}", "", f"{total_mtk:.2f}", f"₹{rate:.2f}", f"₹{total_amount:.2f}", ""])
+            table_data.append(["", "", "", "", "TOTAL", str(total_bags), f"{total_mt:.3f}", "", f"{total_mtk:.2f}", f"{rate:.2f}", f"{total_amount:.2f}", ""])
 
             range_data.append((range_name, table_data))
 
         # Generate PDF
         pdf_file = "bill_report.pdf"
-        doc = SimpleDocTemplate(pdf_file, pagesize=A4, leftMargin=30, rightMargin=30, topMargin=20, bottomMargin=20)
+        doc = SimpleDocTemplate(pdf_file, pagesize=landscape(A4), leftMargin=20, rightMargin=20, topMargin=20, bottomMargin=20)
         elements = []
 
         styles = getSampleStyleSheet()
         styles.add(ParagraphStyle(name='Small', fontSize=8, leading=10))
-        styles.add(ParagraphStyle(name='NormalBold', fontSize=8, leading=10, fontName='Helvetica-Bold'))
-        styles.add(ParagraphStyle(name='TitleBold', fontSize=12, leading=14, fontName='Helvetica-Bold', alignment=0))
+        styles.add(ParagraphStyle(name='NormalBold', fontSize=10, leading=10,  fontName='Helvetica-Bold'))
+        styles.add(ParagraphStyle(name='TitleBold', fontSize=13, leading=14, fontName='Helvetica-Bold', alignment=0))
         styles.add(ParagraphStyle(name='CustomNormal', fontSize=10, leading=12))
-        
+        styles.add(ParagraphStyle(name='CenterBold', fontSize=10, fontName='Helvetica-Bold', alignment=1))
+
         # LEFT COLUMN - Company Info
         left_column = [
             Paragraph("GSTIN: 32ACNFS 8060K1ZP", styles['Small']),
@@ -800,7 +802,7 @@ class DestinationEntryPage:
             Paragraph("21-4185, C-Meenchanda gate Calicut - 673018", styles['CustomNormal']),
             Paragraph("Mob: 9447004108", styles['CustomNormal']),
         ]
-        
+
         # RIGHT COLUMN - To Address and Bill Info
         to_address_lines = to_address.split('\n')
         to_address_paragraphs = [Paragraph(line, styles['CustomNormal']) for line in to_address_lines]
@@ -808,62 +810,85 @@ class DestinationEntryPage:
             Spacer(1, 6),
             Paragraph(f"Date: {date}", styles['CustomNormal']),
         ]
-        
-        # Create Table with 2 columns
-        table_data = [[left_column,"", right_column]]
-        table = Table(table_data, colWidths=[310,100, 125])
-        
-        table.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ]))
 
-        elements.append(table)
+        # Header
+        header_table = Table([[left_column, "", right_column]], colWidths=[480, 40, 280])
+        header_table.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP')]))
+        elements.append(header_table)
         elements.append(Spacer(1, 12))
         elements.append(Paragraph(f"Bill No.: {bill_number},", styles['CustomNormal']))
         elements.append(Spacer(1, 6))
-        
         elements.append(Paragraph('Sir,', styles['CustomNormal']))
         elements.append(Paragraph(letter_note if letter_note else "Please find the details below:", styles['CustomNormal']))
         elements.append(Spacer(1, 8))
 
-        # Tables
+        # Tables for ranges
+        page_width, _ = landscape(A4)
+        usable_width = page_width - doc.leftMargin - doc.rightMargin
+
         for range_name, table_data in range_data:
-            elements.append(Paragraph(range_name, styles['NormalBold']))
-            table = Table(table_data, colWidths=[20, 40, 40, 60, 91, 35, 35, 35, 40, 35, 45, 45])
+            elements.append(Paragraph(range_name, styles['CenterBold']))
+            elements.append(Spacer(1, 3))
+
+            # dynamic column widths across reduced width (e.g. 90% of usable width)
+            shrink_factor = 0.98   # reduce table width to 90% of page
+            target_width = usable_width * shrink_factor  
+
+            col_widths = [30, 45, 60, 60, 160, 35, 40, 40, 45, 40, 50, 40]
+            scale = target_width / sum(col_widths)
+            col_widths = [w * scale for w in col_widths]
+
+            table = Table(table_data, colWidths=col_widths, hAlign="CENTER")  # center table
+
             table.setStyle(TableStyle([
                 ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONT', (0, 1), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 0), (-1, -1), 6),  # Reduced font size
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10.5),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+                ('GRID', (0, 0), (-1, -1), 0.8, colors.black),
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
-                ('LEFTPADDING', (0, 0), (-1, -1), 3),  # Reduced padding
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
+                ('ALIGN', (3, 1), (4, -2), 'LEFT'),
+                ('ALIGN', (11, 1), (11, -2), 'LEFT'),
+                ('LEADING', (0, 0), (-1, -1), 14),
+
+                ('LEFTPADDING', (0, 0), (-1, -1), 3),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-                ('TOPPADDING', (0, 0), (-1, -1), 1),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+
+                # Footer row
+                ('FONTSIZE', (0, -1), (-1, -1), 9.5),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                ('BACKGROUND', (0, -1), (-1, -1), colors.whitesmoke),
             ]))
+
             elements.append(table)
-            elements.append(Spacer(1, 4))  # Reduced spacer height
+            elements.append(Spacer(1, 6))
 
         # Footer
-        passedby = Paragraph("Passed by", styles['CustomNormal'])
-        incharge = Paragraph("officer in charge", styles['CustomNormal'])
-        sign = Paragraph("signature of contractor", styles['CustomNormal'])
-        
-        table_footer_data = [[passedby, "", incharge, "", sign]]
-        footer_table = Table(table_footer_data, colWidths=[100, 120, 100, 110, 100])
+        footer_data = [[
+            Paragraph("Passed by", styles['CustomNormal']),
+            "",
+            Paragraph("Officer in charge", styles['CustomNormal']),
+            "",
+            Paragraph("Signature of contractor", styles['CustomNormal'])
+        ]]
+        footer_table = Table(footer_data, colWidths=[120, 140, 140, 140, 140])
         footer_table.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
         ]))
+        elements.append(Spacer(1, 20))
         elements.append(footer_table)
 
         doc.build(elements)
 
-        # Open the PDF
+        # Open PDF
         try:
             os.startfile(pdf_file)
         except AttributeError:
