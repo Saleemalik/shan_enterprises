@@ -9,7 +9,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from num2words import num2words
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from tkcalendar import DateEntry
 
 
@@ -680,7 +680,7 @@ class MainBillPreviewPage:
             ('FONTSIZE', (0, 0), (-1, 0), 10),
             ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
             ('GRID', (0, 0), (-1, -1), 0.25, colors.black),
             ('BOX', (0, 0), (-1, -1), 1, colors.black),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -695,6 +695,20 @@ class MainBillPreviewPage:
             f"We are claiming for Rs. {grand_amount:,.2f} ({amount_words}) for Clearing & Transportation Bill of Fertilizer.",
             styles['Small']
         ))
+        elements.append(Spacer(1, 12))
+        elements.append(Paragraph("Kindly arrange payment to M/S. Shan Enterprises, through IFSC NO.", styles['Normal']))
+        elements.append(Paragraph("CNRB0014404 - A/C. No.44041400000041 Canara Bank, Panniyankara Branch, Calicut.", styles['Normal']))
+        elements.append(Spacer(1, 12))
+        elements.append(Paragraph("Acknowledge copies of Delivery advice attached with this bill", styles['Normal']))
+        elements.append(Paragraph("I request you to approve the bill and payment may be made at an early date.", styles['Normal']))
+        elements.append(Spacer(1, 20))
+        
+        elements.append(Paragraph("Thanking you", styles['Normal']))
+        elements.append(Spacer(1, 6))
+        # add styles for alignment word right side
+        styles.add(ParagraphStyle(name='RightAlign', alignment=TA_RIGHT, fontName='Helvetica'))
+        elements.append(Paragraph("Yours faithfully", styles['RightAlign']))
+        
 
         # Build and open PDF
         doc.build(elements)
