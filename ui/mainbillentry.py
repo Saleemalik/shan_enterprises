@@ -509,7 +509,7 @@ class MainBillPreviewPage:
 
         styles = getSampleStyleSheet()
         styles.add(ParagraphStyle(name='SmallBold', fontSize=9, fontName='Helvetica-Bold'))
-        styles.add(ParagraphStyle(name='Small', fontSize=8, fontName='Helvetica'))
+        styles.add(ParagraphStyle(name='Small', fontSize=9, fontName='Helvetica'))
         styles.add(ParagraphStyle(name='Justify', alignment=TA_CENTER))
         elements = []
 
@@ -674,11 +674,10 @@ class MainBillPreviewPage:
         tbl = Table(table_data, colWidths=[35, 90, 40, 55, 55, 55, 70, 40, 70, 75])
         tbl.setStyle(TableStyle(table_styles + [
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 10),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
             ('FONTSIZE', (0, 1), (-1, -1), 9),
             ('GRID', (0, 0), (-1, -1), 0.25, colors.black),
@@ -696,14 +695,14 @@ class MainBillPreviewPage:
             styles['Small']
         ))
         elements.append(Spacer(1, 12))
-        elements.append(Paragraph("Kindly arrange payment to M/S. Shan Enterprises, through IFSC NO.", styles['Normal']))
-        elements.append(Paragraph("CNRB0014404 - A/C. No.44041400000041 Canara Bank, Panniyankara Branch, Calicut.", styles['Normal']))
+        elements.append(Paragraph("Kindly arrange payment to M/S. Shan Enterprises, through IFSC NO.", styles['Small']))
+        elements.append(Paragraph("CNRB0014404 - A/C. No.44041400000041 Canara Bank, Panniyankara Branch, Calicut.", styles['Small']))
         elements.append(Spacer(1, 12))
-        elements.append(Paragraph("Acknowledge copies of Delivery advice attached with this bill", styles['Normal']))
-        elements.append(Paragraph("I request you to approve the bill and payment may be made at an early date.", styles['Normal']))
+        elements.append(Paragraph("Acknowledge copies of Delivery advice attached with this bill", styles['Small']))
+        elements.append(Paragraph("I request you to approve the bill and payment may be made at an early date.", styles['Small']))
         elements.append(Spacer(1, 20))
         
-        elements.append(Paragraph("Thanking you", styles['Normal']))
+        elements.append(Paragraph("Thanking you", styles['Small']))
         elements.append(Spacer(1, 6))
         # add styles for alignment word right side
         styles.add(ParagraphStyle(name='RightAlign', alignment=TA_RIGHT, fontName='Helvetica'))

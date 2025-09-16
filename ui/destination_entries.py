@@ -848,7 +848,6 @@ class DestinationEntryPage:
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                 ('GRID', (0, 0), (-1, -1), 0.8, colors.black),
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
                 ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
                 ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
                 ('ALIGN', (3, 1), (4, -2), 'LEFT'),
@@ -863,7 +862,7 @@ class DestinationEntryPage:
                 # Footer row
                 ('FONTSIZE', (0, -1), (-1, -1), 9.5),
                 ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-                ('BACKGROUND', (0, -1), (-1, -1), colors.whitesmoke),
+                ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
             ]))
 
             elements.append(table)
