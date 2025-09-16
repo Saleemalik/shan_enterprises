@@ -129,6 +129,10 @@ Button(main_frame, text="View Main Bills", command=lambda: show_frame_by_key("ma
 
 # Lazy-loaded frames dictionary
 loaded_frames = {}
+frame_history = []
+
+# Navigation history
+frame_history = []
 
 def show_frame_by_key(frame_key):
     # If not yet loaded, initialize the frame
@@ -167,7 +171,16 @@ def show_frame_by_key(frame_key):
         else:
             return
 
+        # Add back button automatically (not on main dashboard)
+        if frame_key != "main":
+            back_btn = Button(frame, text="⬅ Back", command=go_back)
+            back_btn.pack(anchor="w", pady=5, padx=5)
+
         loaded_frames[frame_key] = frame
+
+    # Push to history (avoid duplicates)
+    if not frame_history or frame_history[-1] != frame_key:
+        frame_history.append(frame_key)
 
     # Raise the requested frame
     loaded_frames[frame_key].tkraise()
@@ -175,11 +188,25 @@ def show_frame_by_key(frame_key):
     update_canvas()
 
 
-# Frame switch
 def show_frame(frame):
+    """Directly show a given frame (used for main_frame at startup)."""
     frame.tkraise()
     root.update_idletasks()
     update_canvas()
 
+
+def go_back():
+    """Go back to previous frame."""
+    if len(frame_history) > 1:
+        # Pop current
+        frame_history.pop()
+        # Show previous
+        prev_key = frame_history[-1]
+        loaded_frames[prev_key].tkraise()
+        root.update_idletasks()
+        update_canvas()
+
+loaded_frames["main"] = main_frame
+frame_history.append("main")
 show_frame(main_frame)
 root.mainloop()
