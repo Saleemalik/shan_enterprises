@@ -184,6 +184,8 @@ def show_frame_by_key(frame_key):
 
     # Raise the requested frame
     loaded_frames[frame_key].tkraise()
+    # let the frame know it was shown (so it can refresh)
+    loaded_frames[frame_key].event_generate("<<ShowFrame>>")
     root.update_idletasks()
     update_canvas()
 
@@ -191,6 +193,7 @@ def show_frame_by_key(frame_key):
 def show_frame(frame):
     """Directly show a given frame (used for main_frame at startup)."""
     frame.tkraise()
+    frame.event_generate("<<ShowFrame>>")
     root.update_idletasks()
     update_canvas()
 

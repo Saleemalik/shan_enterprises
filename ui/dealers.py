@@ -10,7 +10,12 @@ class DealerManager:
         self.cursor = conn.cursor()
         self.master_frame = master_frame
         self.home_frame = home_frame
-
+        
+        # Bind to virtual event so this page can refresh when shown
+        # (the main app will generate <<ShowFrame>> when raising frames)
+        self.master_frame.bind("<<ShowFrame>>", lambda e: self.load_destinations())
+        
+        
         self.setup_ui()
 
     def setup_ui(self):
@@ -34,11 +39,15 @@ class DealerManager:
         self.destination_cb = Combobox(self.form, state="readonly")
         self.destination_cb.grid(row=6, column=1)
         
-        # Load destination options
-        self.cursor.execute("SELECT id, name FROM destination")
-        dest_rows = self.cursor.fetchall()
-        self.destination_map = {f"{id} - {name}": id for id, name in dest_rows}
-        self.destination_cb['values'] = list(self.destination_map.keys())
+        # Populate destinations initially
+        self.destination_map = {}
+        self.load_destinations()
+        
+        # # Load destination options
+        # self.cursor.execute("SELECT id, name FROM destination")
+        # dest_rows = self.cursor.fetchall()
+        # self.destination_map = {f"{id} - {name}": id for id, name in dest_rows}
+        # self.destination_cb['values'] = list(self.destination_map.keys())
 
         Button(self.form, text="Add Dealer", command=self.add_dealer).grid(row=7, column=0, pady=10)
         Button(self.form, text="Update Dealer", command=self.update_dealer).grid(row=7, column=1, pady=10)
@@ -74,6 +83,25 @@ class DealerManager:
         self.dealer_list.pack(fill="both", expand=True, padx=10, pady=10)
 
         self.load_dealers()
+        
+    
+    def load_destinations(self):
+        """Load destinations from DB and update the combobox and internal map."""
+        try:
+            self.cursor.execute("SELECT id, name FROM destination ORDER BY name")
+            dest_rows = self.cursor.fetchall()
+            # Build mapping and the combobox values
+            self.destination_map = {f"{id} - {name}": id for id, name in dest_rows}
+            values = list(self.destination_map.keys())
+            self.destination_cb['values'] = values
+
+            # clear selection if current selection is no longer valid
+            cur = self.destination_cb.get()
+            if cur not in values:
+                self.destination_cb.set('')  # no selection
+        except Exception as e:
+            messagebox.showerror("DB Error", f"Failed to load destinations: {e}")
+
         
     def search_dealers(self):
         query = self.search_var.get().strip()
