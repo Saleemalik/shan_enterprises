@@ -21,6 +21,10 @@ class DestinationEntryPage:
         self.dealer_entry_ids = {}  # key = (range_index, dealer_index), value = dealer_entry_id
         self.save_button = Button(self.frame, text="💾 Save Entry", font=("Arial", 12), command=self.save_entries)
         self.print_button = Button(self.frame, text="🖨️ Print Entry", font=("Arial", 12), command=self.print_entry)
+        
+        # Bind to virtual event so this page can refresh when shown
+        # (the main app will generate <<ShowFrame>> when raising frames)
+        self.frame.bind("<<ShowFrame>>", lambda e: self.refresh())
 
         self.used_ranges = set()
         self.range_frames = []
@@ -71,23 +75,6 @@ class DestinationEntryPage:
 
         self.build_ui()
 
-    def refresh(self):
-        # Clear range frames
-        for rf in self.range_frames:
-            rf.destroy()
-        self.range_frames.clear()
-        self.used_ranges.clear()
-
-        # Clear form fields
-        self.letter_note_text.delete("1.0", END)
-        self.bill_number_entry.delete(0, END)
-        self.date_entry.delete(0, END)
-        self.date_entry.insert(0, datetime.now().strftime("%Y-%m-%d"))
-        self.to_address_text.delete("1.0", END)
-
-        # Reload destination combobox
-        self.load_destinations()
-        self.destination_cb.set('')
 
     def build_ui(self):
         top_row = Frame(self.frame)
@@ -95,6 +82,8 @@ class DestinationEntryPage:
 
         # ← Back button
         Button(top_row, text="← Back to Dashboard", command=lambda: self.home_frame.tkraise()).pack(side='left', pady=10)
+        Button(top_row, text="⟳ Clear", command=self.clear).pack(side='left', pady=10, padx=5)
+
 
         # Title centered
         Label(top_row, text="Destination Entry Form", font=("Arial", 16)).pack(side='left', expand=True, pady=10)
@@ -482,7 +471,7 @@ class DestinationEntryPage:
         self.save_button.pack(pady=10)
         self.print_button.pack(pady=10)
 
-        Button(self.frame, text="➕ Add New Entry", command=lambda:self.refresh(False)).pack(pady=20)
+        Button(self.frame, text="➕ Add New Entry", command=lambda:self.clear(False)).pack(pady=20)
     
     def save_changes(self):
         letter_note = self.letter_note_text.get("1.0", END).strip()
@@ -604,7 +593,13 @@ class DestinationEntryPage:
             self.conn.rollback()
             messagebox.showerror("Error", f"Failed to update:\n{e}")
     
-    def refresh(self, stat=True):
+    def refresh(self):
+        self.load_destinations()
+        for frame in self.range_frames:
+            if hasattr(frame, 'dealer_map'):
+                self.refresh_dealers_for_frame(frame)
+                
+    def clear(self, stat=True):
         if self.editing_mode and stat:
             self.load_existing_entry(self.destination_entry_id)
         else:            
@@ -617,8 +612,38 @@ class DestinationEntryPage:
 
             self.__init__(self.frame, self.home_frame, self.conn)
 
+    def refresh_dealers_for_frame(self, frame):
+        """Refresh dealer list for a specific range slab frame"""
+        rate_range_id = frame.rate_range_id
+
+        # get range slab limits
+        self.c.execute("SELECT from_km, to_km FROM rate_range WHERE id=?", (rate_range_id,))
+        from_km, to_km = self.c.fetchone()
+
+        selected_dest = self.destination_cb.get()
+        destination_id = self.destination_map.get(selected_dest)
+
+        # fetch updated dealers from DB
+        self.c.execute("""
+            SELECT id, name, place, distance FROM dealer
+            WHERE distance BETWEEN ? AND ? AND destination_id = ?
+        """, (from_km, to_km, destination_id))
+        dealers = self.c.fetchall()
+
+        dealer_map = {
+            f"{id} - {name} ({distance}km)": (id, name, place, distance)
+            for id, name, place, distance in dealers
+        }
+        frame.dealer_map = dealer_map
+
+        # update all existing dealer comboboxes in this frame
+        for row in frame.dealer_rows:
+            if 'dealer_cb' in row:
+                row['dealer_cb']['values'] = list(dealer_map.keys())
+
+
     def load_existing_entry(self, destination_entry_id):
-        self.refresh(False)
+        self.clear(False)
         self.editing_mode = True
         self.destination_entry_id = destination_entry_id
         self.range_entry_ids = {}

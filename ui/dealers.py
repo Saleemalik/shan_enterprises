@@ -14,8 +14,7 @@ class DealerManager:
         # Bind to virtual event so this page can refresh when shown
         # (the main app will generate <<ShowFrame>> when raising frames)
         self.master_frame.bind("<<ShowFrame>>", lambda e: self.load_destinations())
-        
-        
+
         self.setup_ui()
 
     def setup_ui(self):
@@ -118,8 +117,7 @@ class DealerManager:
             FROM dealer
             LEFT JOIN destination ON dealer.destination_id = destination.id
             WHERE dealer.code LIKE ? OR dealer.name LIKE ? OR dealer.place LIKE ? 
-                OR dealer.mobile LIKE ? OR destination.name LIKE ?
-        """
+                OR dealer.mobile LIKE ? OR destination.name LIKE ? """
         like_query = f"%{query}%"
         self.cursor.execute(sql, (like_query, like_query, like_query, like_query, like_query))
 
