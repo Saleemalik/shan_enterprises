@@ -39,19 +39,26 @@ class DestinationEntryViewer:
         # scrollbar = Scrollbar(tree_frame)
         # scrollbar.pack(side=RIGHT, fill=Y)
 
-        columns = ("id", "date", "destination", "letter_note", "bill_number", "to_address")
+        columns = ("id", "date", "destination", "bill_number", "ranges")
         column_titles = {
-            "id": "ID", "date": "Date", "destination": "Destination",
-            "letter_note": "Letter Note", "bill_number": "Bill No", "to_address": "To Address"
+            "id": "ID",
+            "date": "Date",
+            "destination": "Destination",
+            "bill_number": "Bill No",
+            "ranges": "Ranges"
         }
-
 
         self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings") # yscrollcommand=scrollbar.set
         # scrollbar.config(command=self.tree.yview)
 
         for col in columns:
             self.tree.heading(col, text=column_titles[col])
-            self.tree.column(col, width=80 if col in ("id", "bags", "mt", "km", "rate", "mtk") else 120)
+            if col in ("id", "bill_number"):
+                self.tree.column(col, width=80, anchor=CENTER)
+            elif col == "ranges":
+                self.tree.column(col, width=200)
+            else:
+                self.tree.column(col, width=120)
 
         self.tree.pack(fill='both', expand=True)
         self.tree.bind("<Double-1>", lambda e: self.edit_entry())  # Double-click to edit
@@ -112,11 +119,29 @@ class DestinationEntryViewer:
         dealer = self.dealer_entry.get().strip()
 
         query = """
-            SELECT de.id, de.date, d.name, de.letter_note, de.bill_number, de.to_address
+            SELECT 
+                de.id,
+                de.date,
+                d.name AS destination,
+                de.bill_number,
+                (
+                    SELECT GROUP_CONCAT(r, ', ')
+                    FROM (
+                        SELECT DISTINCT 
+                            TRIM(REPLACE(rr.from_km, '.0', '')) || '-' || TRIM(REPLACE(rr.to_km, '.0', '')) AS r
+                        FROM rate_range rr
+                        JOIN range_entry re2 ON re2.rate_range_id = rr.id
+                        WHERE re2.destination_entry_id = de.id
+                        ORDER BY rr.from_km
+                    )
+                ) AS ranges
             FROM destination_entry de
             JOIN destination d ON de.destination_id = d.id
+            LEFT JOIN range_entry re ON re.destination_entry_id = de.id
+            LEFT JOIN rate_range rr ON rr.id = re.rate_range_id
             WHERE 1=1
-        """
+            """
+
         params = []
 
         if dest_id:
@@ -135,8 +160,8 @@ class DestinationEntryViewer:
                 )
             """
             params.append(f"%{dealer}%")
-
-        query += " ORDER BY de.date DESC, de.id DESC"
+        
+        query += " GROUP BY de.id ORDER BY de.date DESC, de.id DESC"
 
         self.c.execute(query, params)
         rows = self.c.fetchall()
