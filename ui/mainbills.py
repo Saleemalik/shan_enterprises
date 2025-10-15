@@ -1,8 +1,6 @@
-
 from tkinter import *
-from tkinter import ttk
+from tkinter import ttk, messagebox
 from ui.mainbillentry import MainBillPreviewPage
-from tkinter import messagebox
 import pandas as pd
 
 class ViewMainBillsPage:
@@ -15,16 +13,26 @@ class ViewMainBillsPage:
         Label(self.frame, text="View Main Bills", font=("Arial", 16, "bold")).pack(pady=10)
         Button(self.frame, text="← Back to Dashboard", command=lambda: self.home_frame.tkraise()).pack(anchor='nw', padx=10)
 
-        self.tree = ttk.Treeview(self.frame, columns=("bill_number", "date", "to_address", "amount"), show="headings")
+        # Updated columns: Removed "to_address", added "ranges"
+        self.tree = ttk.Treeview(
+            self.frame,
+            columns=("bill_number", "date", "ranges", "amount"),
+            show="headings"
+        )
         self.tree.heading("bill_number", text="Bill Number")
         self.tree.heading("date", text="Date")
-        self.tree.heading("to_address", text="To Address")
+        self.tree.heading("ranges", text="Ranges")
         self.tree.heading("amount", text="Amount")
-        self.tree.pack(fill='both', expand=True, padx=20, pady=10)
 
+        self.tree.column("bill_number", width=150)
+        self.tree.column("date", width=100)
+        self.tree.column("ranges", width=250)
+        self.tree.column("amount", width=100, anchor=E)
+
+        self.tree.pack(fill='both', expand=True, padx=20, pady=10)
         self.tree.bind("<Double-1>", self.open_selected_bill)
 
-        self.load_bills()
+        # Search and buttons
         search_frame = Frame(self.frame)
         search_frame.pack(pady=5)
 
@@ -37,24 +45,50 @@ class ViewMainBillsPage:
         Button(search_frame, text="🧹 Clear", command=self.clear_filter).pack(side=LEFT, padx=(5, 0))
         Button(self.frame, text="🗑️ Delete Selected Bill", command=self.delete_selected_bill).pack(pady=(5, 10))
 
-    
+        self.load_bills()
+
+    # --------------------------
+    # 🔍 FILTERING
+    # --------------------------
     def filter_bills(self):
         query = self.search_var.get().strip().lower()
         for item in self.tree.get_children():
-            bill_no = self.tree.item(item)['values'][0].lower()
-            self.tree.detach(item) if query not in bill_no else self.tree.reattach(item, '', 'end')
+            bill_no = str(self.tree.item(item)['values'][0]).lower()
+            if query not in bill_no:
+                self.tree.detach(item)
+            else:
+                self.tree.reattach(item, '', 'end')
 
     def clear_filter(self):
         self.search_var.set("")
         for item in self.tree.get_children():
             self.tree.reattach(item, '', 'end')
 
-
+    # --------------------------
+    # 📥 LOAD BILLS (with RANGES)
+    # --------------------------
     def load_bills(self):
         self.tree.delete(*self.tree.get_children())
-        self.c.execute('''
-            SELECT mb.id, mb.bill_number, mb.date_of_clearing, mb.to_address,
-                   IFNULL(SUM(dr.amount), 0)
+
+        self.c.execute("""
+            SELECT 
+                mb.id,
+                mb.bill_number,
+                mb.date_of_clearing,
+                (
+                    SELECT GROUP_CONCAT(r, ', ')
+                    FROM (
+                        SELECT DISTINCT 
+                            TRIM(REPLACE(rr.from_km, '.0', '')) || '-' || TRIM(REPLACE(rr.to_km, '.0', '')) AS r
+                        FROM rate_range rr
+                        JOIN range_entry re2 ON re2.rate_range_id = rr.id
+                        JOIN destination_entry de2 ON de2.id = re2.destination_entry_id
+                        JOIN main_bill_entries mbe2 ON mbe2.destination_entry_id = de2.id
+                        WHERE mbe2.main_bill_id = mb.id
+                        ORDER BY rr.from_km
+                    )
+                ) AS ranges,
+                IFNULL(SUM(dr.amount), 0) AS total_amount
             FROM main_bill mb
             LEFT JOIN main_bill_entries mbe ON mbe.main_bill_id = mb.id
             LEFT JOIN destination_entry de ON de.id = mbe.destination_entry_id
@@ -62,18 +96,21 @@ class ViewMainBillsPage:
             LEFT JOIN dealer_entry dr ON dr.range_entry_id = re.id
             GROUP BY mb.id
             ORDER BY mb.date_of_clearing DESC
-        ''')
-        for row in self.c.fetchall():
-            self.tree.insert("", END, values=row[1:])
+        """)
 
+        for row in self.c.fetchall():
+            _, bill_number, date, ranges, amount = row
+            self.tree.insert("", END, values=(bill_number, date, ranges or "-", round(amount, 2)))
+
+    # --------------------------
+    # 📄 OPEN SELECTED BILL
+    # --------------------------
     def open_selected_bill(self, event=None):
         selected = self.tree.selection()
         if not selected:
             return
 
         bill_number = self.tree.item(selected[0])['values'][0]
-        
-        # Get main bill data
         self.c.execute('SELECT * FROM main_bill WHERE bill_number = ?', (bill_number,))
         row = self.c.fetchone()
         if not row:
@@ -90,27 +127,23 @@ class ViewMainBillsPage:
             "product": row[6],
             "hsn_sac_code": row[7],
             "year": row[8],
-            "created_date": row[4]  # fallback
+            "created_date": row[4] or ""
         }
 
-        # Get destination_entry_ids
+        # Get linked destination entries
         self.c.execute('SELECT destination_entry_id FROM main_bill_entries WHERE main_bill_id = ?', (main_bill_id,))
         destination_entry_ids = [r[0] for r in self.c.fetchall()]
 
-        # Open preview page in read-only mode (no Save button)
         preview_frame = Frame(self.frame.master)
         preview_frame.grid(row=0, column=0, sticky='nsew')
         
-        preview_page = MainBillPreviewPage(
-            preview_frame,
-            self.frame,
-            self.conn,
-            main_bill_data,
-            destination_entry_ids
-        )
-        preview_page.hide_save_button()  # <-- Hide Save button
+        preview_page = MainBillPreviewPage(preview_frame, self.frame, self.conn, main_bill_data, destination_entry_ids)
+        preview_page.hide_save_button()
         preview_frame.tkraise()
 
+    # --------------------------
+    # 🗑️ DELETE BILL
+    # --------------------------
     def delete_selected_bill(self):
         selected = self.tree.selection()
         if not selected:
@@ -119,7 +152,6 @@ class ViewMainBillsPage:
 
         bill_number = self.tree.item(selected[0])['values'][0]
         confirm = messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete Bill #{bill_number}?")
-
         if not confirm:
             return
 
@@ -133,90 +165,14 @@ class ViewMainBillsPage:
 
             main_bill_id = row[0]
 
-            # Unlink destination_entry
+            # Unlink and delete
             self.c.execute("UPDATE destination_entry SET main_bill_id = NULL WHERE main_bill_id = ?", (main_bill_id,))
-
-            # Delete linked entries
             self.c.execute("DELETE FROM main_bill_entries WHERE main_bill_id = ?", (main_bill_id,))
             self.c.execute("DELETE FROM main_bill WHERE id = ?", (main_bill_id,))
-
             self.conn.commit()
+
             messagebox.showinfo("Deleted", f"Bill #{bill_number} deleted successfully.")
             self.load_bills()
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to delete bill:\n{e}")
-
-
-    def import_dealers_from_file(self, file_path):
-        try:
-            # Read the Excel file
-            excel_file = pd.ExcelFile(file_path)
-            
-            # Get all sheet names
-            sheet_names = excel_file.sheet_names
-            
-            for sheet_name in sheet_names:
-                # Skip empty sheets (like Sheet1)
-                if sheet_name == "Sheet1":
-                    continue
-                    
-                # Check if destination exists by name or place
-                self.cursor.execute(
-                    "SELECT id FROM destination WHERE name = ? OR place = ?",
-                    (sheet_name, sheet_name)
-                )
-                dest_result = self.cursor.fetchone()
-                
-                if dest_result:
-                    destination_id = dest_result[0]
-                else:
-                    # Insert new destination if no match found
-                    self.cursor.execute(
-                        "INSERT INTO destination (name, place) VALUES (?, ?)",
-                        (sheet_name, sheet_name)
-                    )
-                    self.conn.commit()
-                    destination_id = self.cursor.lastrowid
-                
-                # Read the sheet data
-                df = pd.read_excel(file_path, sheet_name=sheet_name)
-                
-                # Ensure column names match the expected format
-                df.columns = ['Dealer code', 'NAME', 'Place', 'Pin Code', 'Mob No.', 'Distance']
-                
-                # Insert each row into the dealer table
-                for index, row in df.iterrows():
-                    code = str(row['Dealer code']).strip()
-                    name = str(row['NAME']).strip()
-                    place = str(row['Place']).strip()
-                    pincode = str(row['Pin Code']).strip()
-                    mobile = str(row['Mob No.']).strip() if not pd.isna(row['Mob No.']) else ""
-                    distance = float(row['Distance']) if not pd.isna(row['Distance']) else 0.0
-                    
-                    # Skip rows with missing required fields
-                    if not code or not name:
-                        continue
-                    
-                    try:
-                        self.cursor.execute(
-                            """
-                            INSERT OR IGNORE INTO dealer 
-                            (code, name, place, pincode, mobile, distance, destination_id) 
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (code, name, place, pincode, mobile, distance, destination_id)
-                        )
-                    except Exception as e:
-                        print(f"Error inserting dealer {code}: {str(e)}")
-                        continue
-                
-                self.conn.commit()
-            
-            # Reload the dealers in the UI
-            self.load_dealers()
-            self.clear_fields()
-            messagebox.showinfo("Success", f"Dealers imported successfully from {len(sheet_names)-1} destinations")
-            
-        except Exception as e:
-            messagebox.showerror("Import Error", f"Failed to import dealers: {str(e)}")
