@@ -90,11 +90,25 @@ class MainBillPage:
         # Destination Entries Table
         Label(self.frame, text="Select Destination Entries", font=("Arial", 12, "bold")).pack(pady=10)
 
-        self.dest_tree = ttk.Treeview(self.frame, columns=("id", "date", "destination", "bill_number", "to_address"), show="headings", selectmode="extended")
-        for col, title in zip(["id", "date", "destination", "bill_number", "to_address"],
-                              ["ID", "Date", "Destination", "Bill Number", "To Address"]):
+        # Updated Destination Entries Table
+        self.dest_tree = ttk.Treeview(
+            self.frame,
+            columns=("id", "date", "destination", "bill_number", "ranges"),
+            show="headings",
+            selectmode="extended"
+        )
+
+        for col, title in zip(
+            ["id", "date", "destination", "bill_number", "ranges"],
+            ["ID", "Date", "Destination", "Bill Number", "Ranges"]
+        ):
             self.dest_tree.heading(col, text=title)
-            self.dest_tree.column(col, width=100 if col in ("id", "date") else 200)
+            if col == "ranges":
+                self.dest_tree.column(col, width=200)
+            elif col in ("id", "date"):
+                self.dest_tree.column(col, width=80)
+            else:
+                self.dest_tree.column(col, width=150)
 
         self.dest_tree.pack(padx=20, fill="both", expand=True)
         Button(self.frame, text="🔍 Preview Main Bill", command=self.open_preview_page).pack(pady=10)
@@ -177,11 +191,11 @@ class MainBillPage:
             SELECT d.name AS destination, re.id AS range_entry_id, rr.from_km, rr.to_km, rr.rate, rr.is_mtk,
                    dr.no_bags, dr.mt, dr.km, dr.mtk, dr.amount
             FROM range_entry re
-            JOIN destination_entry de ON re.destination_entry_id = de.id
             JOIN destination d ON de.destination_id = d.id
             JOIN dealer_entry dr ON dr.range_entry_id = re.id
             JOIN rate_range rr ON re.rate_range_id = rr.id
             WHERE de.id IN ({placeholders})
+            JOIN destination_entry de ON re.destination_entry_id = de.id
             ORDER BY d.name, rr.from_km
         '''
 
