@@ -138,7 +138,6 @@ class ViewMainBillsPage:
         preview_frame.grid(row=0, column=0, sticky='nsew')
         
         preview_page = MainBillPreviewPage(preview_frame, self.frame, self.conn, main_bill_data, destination_entry_ids)
-        preview_page.hide_save_button()
         preview_frame.tkraise()
 
     # --------------------------
