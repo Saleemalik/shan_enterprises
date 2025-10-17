@@ -8,6 +8,8 @@ class DestinationEntryViewer:
         self.edit_entry_page = edit_entry_page
         self.conn = conn
         self.c = conn.cursor()
+        self.master_frame.bind("<<ShowFrame>>", lambda e: self.load_destinations())
+
 
         Label(self.frame, text="View Destination Entries", font=("Arial", 16)).pack(pady=10)
         Button(self.frame, text="← Back to Dashboard", command=lambda: self.home_frame.tkraise()).pack(anchor='nw', padx=10)

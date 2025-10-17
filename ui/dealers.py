@@ -13,7 +13,7 @@ class DealerManager:
         
         # Bind to virtual event so this page can refresh when shown
         # (the main app will generate <<ShowFrame>> when raising frames)
-        self.master_frame.bind("<<ShowFrame>>", lambda e: self.load_destinations())
+        self.master_frame.bind("<<ShowFrame>>", lambda e: self.refresh())
 
         self.setup_ui()
 
@@ -82,6 +82,11 @@ class DealerManager:
         self.dealer_list.pack(fill="both", expand=True, padx=10, pady=10)
 
         self.load_dealers()
+        
+    def refresh(self):
+        """Refresh the dealer list and destination combobox."""
+        self.load_dealers()
+        self.load_destinations()
         
     
     def load_destinations(self):

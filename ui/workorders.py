@@ -8,7 +8,8 @@ class WorkOrderRatePage:
         self.home_frame = home_frame
         self.conn = conn
         self.c = conn.cursor()
-
+        self.frame.bind("<<ShowFrame>>", lambda e: self.load_rates())
+        
         self.c.execute('''CREATE TABLE IF NOT EXISTS rate_range (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             from_km REAL,
