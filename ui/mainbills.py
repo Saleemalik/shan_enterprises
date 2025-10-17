@@ -9,7 +9,7 @@ class ViewMainBillsPage:
         self.home_frame = home_frame
         self.conn = conn
         self.c = conn.cursor()
-        
+        self.frame.bind("<<ShowFrame>>", lambda e: self.load_bills())
         Label(self.frame, text="View Main Bills", font=("Arial", 16, "bold")).pack(pady=10)
         Button(self.frame, text="← Back to Dashboard", command=lambda: self.home_frame.tkraise()).pack(anchor='nw', padx=10)
 
