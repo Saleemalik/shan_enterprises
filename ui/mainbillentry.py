@@ -19,7 +19,9 @@ class MainBillPage:
         self.home_frame = home_frame
         self.conn = conn
         self.c = conn.cursor()
+        self.frame.bind("<<ShowFrame>>", lambda e: self.refresh())
         
+        # --- TABLE UPDATE ---
         self.c.execute('''
             CREATE TABLE IF NOT EXISTS main_bill (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,10 +32,11 @@ class MainBillPage:
                 fact_gst_number TEXT,
                 product TEXT DEFAULT 'FACTOMFOS',
                 hsn_sac_code TEXT,
-                year TEXT
+                year TEXT,
+                is_garage BOOLEAN DEFAULT 0
             )
         ''')
-        
+
         self.c.execute('''
             CREATE TABLE IF NOT EXISTS main_bill_entries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,9 +47,7 @@ class MainBillPage:
             )
         ''')
 
-
-        Label(self.frame, text="Generate Main Bill", font=("Arial", 16)).pack(pady=10)
-
+        Label(self.frame, text="Generate Main Bill", font=("Arial", 16, "bold")).pack(pady=10)
         Button(self.frame, text="← Back to Dashboard", command=lambda: self.home_frame.tkraise()).pack(anchor='nw', padx=10)
 
         form_frame = Frame(self.frame)
@@ -87,6 +88,14 @@ class MainBillPage:
         self.year_entry = Entry(form_frame, width=40)
         self.year_entry.grid(row=7, column=1, pady=5)
 
+        # ✅ NEW: "Is Garage" checkbox
+        self.is_garage_var = IntVar()
+        Checkbutton(
+            form_frame, text="Is Garage Bill",
+            variable=self.is_garage_var,
+            command=self.load_destination_entries
+        ).grid(row=8, column=1, sticky=W, pady=5)
+
         # Destination Entries Table
         Label(self.frame, text="Select Destination Entries", font=("Arial", 12, "bold")).pack(pady=10)
 
@@ -116,27 +125,49 @@ class MainBillPage:
         self.load_destination_entries()
         self.load_form_cache()
         
-        self.frame.bind_all("<Control-r>", self.reload_entries)
-        self.reload_entries()
+        self.frame.bind_all("<Control-r>", self.refresh)
+        self.refresh()
 
-    def reload_entries(self, event=None):
+    def refresh(self, event=None):
         self.load_destination_entries()
         self.load_form_cache()
-
-        
+    
     def load_destination_entries(self):
         self.dest_tree.delete(*self.dest_tree.get_children())
-        self.c.execute('''
-            SELECT de.id, de.date, d.name, de.bill_number, de.to_address
+
+        is_garage = self.is_garage_var.get()
+
+        query = """
+            SELECT 
+                de.id,
+                de.date,
+                d.name AS destination,
+                de.bill_number,
+                (
+                    SELECT GROUP_CONCAT(r, ', ')
+                    FROM (
+                        SELECT DISTINCT 
+                            TRIM(REPLACE(rr.from_km, '.0', '')) || '-' || TRIM(REPLACE(rr.to_km, '.0', '')) AS r
+                        FROM rate_range rr
+                        JOIN range_entry re2 ON re2.rate_range_id = rr.id
+                        WHERE re2.destination_entry_id = de.id
+                        ORDER BY rr.from_km
+                    )
+                ) AS ranges
             FROM destination_entry de
             JOIN destination d ON de.destination_id = d.id
-            WHERE de.main_bill_id IS NULL OR de.main_bill_id = ""
-            ORDER BY de.date DESC
-        ''')
+            WHERE (de.main_bill_id IS NULL OR de.main_bill_id = "")
+            AND d.is_garage = ?
+            GROUP BY de.id
+            ORDER BY de.date DESC, de.id DESC
+        """
 
-        for row in self.c.fetchall():
+        self.c.execute(query, (is_garage,))
+        rows = self.c.fetchall()
+
+        for row in rows:
             self.dest_tree.insert("", END, values=row)
-            
+
     def save_form_cache(self):
         cache = {
             "bill_number": self.bill_number_entry.get(),
@@ -147,10 +178,11 @@ class MainBillPage:
             "product": self.product_entry.get(),
             "hsn_sac_code": self.hsn_entry.get(),
             "year": self.year_entry.get(),
+            "is_garage": self.is_garage_var.get(),
         }
         with open("main_bill_cache.json", "w") as f:
             json.dump(cache, f)
-            
+
     def load_form_cache(self):
         if os.path.exists("main_bill_cache.json"):
             with open("main_bill_cache.json", "r") as f:
@@ -250,6 +282,7 @@ class MainBillPage:
             "product": self.product_entry.get().strip(),
             "hsn_sac_code": self.hsn_entry.get().strip(),
             "year": self.year_entry.get().strip(),
+            "is_garage": self.is_garage_var.get(),
             "created_date": datetime.today().strftime("%d-%m-%Y")
         }
 
@@ -257,6 +290,7 @@ class MainBillPage:
             messagebox.showwarning("Missing Info", "Bill number and Date of Clearing are required.")
             return
 
+        from ui.mainbillentry import MainBillPreviewPage
         preview_frame = Frame(self.frame.master)
         preview_frame.grid(row=0, column=0, sticky='nsew')
 
