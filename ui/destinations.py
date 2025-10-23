@@ -229,7 +229,7 @@ class DestinationPage:
                                   WHERE name=? AND place=? AND destination_id=?""",
                                ( distance or 0, mobile, pincode, name, place, dest_id))
             else:
-                dealer_code = f"GAR-{dest_id:04d}"
+                dealer_code = f"GAR-{int(dest_id):04d}"
                 self.c.execute("""INSERT INTO dealer (code, name, place, distance, mobile, pincode, destination_id)
                                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
                                (dealer_code, name, place, distance or 0, mobile, pincode, dest_id))
