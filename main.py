@@ -12,6 +12,11 @@ from ui.mainbills import ViewMainBillsPage
 # DB setup
 conn = sqlite3.connect("billing_app.db")
 c = conn.cursor()
+try:
+    c.execute("ALTER TABLE dealer ADD COLUMN active BOOLEAN DEFAULT 1")
+    conn.commit()
+except:
+    pass  # Ignore if already exists
 
 # Tables
 c.execute('''CREATE TABLE IF NOT EXISTS dealer (
@@ -23,6 +28,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS dealer (
     mobile TEXT,
     distance REAL,
     destination_id INTEGER,
+    active BOOLEAN DEFAULT 1,
     FOREIGN KEY (destination_id) REFERENCES destination(id)
 )''')
 
