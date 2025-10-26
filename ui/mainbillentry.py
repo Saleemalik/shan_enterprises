@@ -381,106 +381,191 @@ class MainBillPreviewPage:
         Button(self.frame, text="← Back", command=lambda: self.home_frame.tkraise()).pack(pady=(0, 10))
 
     def build_grouped_table(self):
-        Label(self.frame, text="TRANSPORTATION", font=("Arial", 12, "bold")).pack(pady=(10, 0))
-
-        columns = ("destination", "qty_mt", "mtk", "amount")
-        self.tree = ttk.Treeview(self.frame, columns=columns, show="tree headings")
-
-        self.tree.heading("#0", text="Slab")
-        self.tree.column("#0", width=200)
-
-        self.tree.heading("destination", text="Destination")
-        self.tree.column("destination", width=200)
-
-        self.tree.heading("qty_mt", text="Qty / MT")
-        self.tree.column("qty_mt", width=100, anchor="center")
-
-        self.tree.heading("mtk", text="MTK")
-        self.tree.column("mtk", width=80, anchor="center")
-
-        self.tree.heading("amount", text="Amount")
-        self.tree.column("amount", width=100, anchor="center")
-
-        self.tree.pack(padx=10, pady=5, fill="x")
-
+        # Detect if garage bill
         placeholders = ",".join("?" for _ in self.destination_entry_ids)
-        query = f'''
-            SELECT rr.from_km, rr.to_km, rr.rate, rr.is_mtk,
-                d.name AS dealer_name,
-                (ds.name || CASE WHEN ds.place IS NOT NULL AND ds.place != '' THEN ' (' || ds.place || ')' ELSE '' END) AS destination_name,
-                dr.no_bags, dr.mt, dr.km, dr.mtk, dr.amount
-            FROM dealer_entry dr
-            JOIN range_entry re ON dr.range_entry_id = re.id
-            JOIN destination_entry de ON re.destination_entry_id = de.id
-            JOIN dealer d ON dr.dealer_id = d.id
-            JOIN destination ds ON de.destination_id = ds.id
-            JOIN rate_range rr ON re.rate_range_id = rr.id
-            WHERE de.id IN ({placeholders})
-            ORDER BY rr.from_km, ds.name, d.name
-        '''
-        self.c.execute(query, self.destination_entry_ids)
-        rows = self.c.fetchall()
+        self.c.execute(f'''
+            SELECT COUNT(*) FROM destination_entry de
+            JOIN destination d ON de.destination_id = d.id
+            WHERE de.id IN ({placeholders}) AND d.is_garage = 1
+        ''', self.destination_entry_ids)
+        is_garage_bill = self.c.fetchone()[0] > 0
 
-        grouped = defaultdict(list)
-        for row in rows:
-            key = (row[0], row[1], row[2], row[3])  # from_km, to_km, rate, is_mtk
-            grouped[key].append(row)
+        # Change title accordingly
+        title = "TRANSPORTATION (DEPOT)" if is_garage_bill else "TRANSPORTATION"
+        Label(self.frame, text=title, font=("Arial", 12, "bold")).pack(pady=(10, 0))
 
-        self.grand_qty = self.grand_mt = self.grand_mtk = self.grand_amount = 0
+        if is_garage_bill:
+            # --- GARAGE BILL MODE ---
+            columns = ("destination", "qty_mt", "km", "mtk", "amount")
+            self.tree = ttk.Treeview(self.frame, columns=columns, show="headings")
 
-        for (from_km, to_km, rate, is_mtk), entries in grouped.items():
-            slab_label = f"SLAB {from_km}-{to_km} KM @ ₹{rate:.2f}"
-            parent = self.tree.insert("", "end", text=slab_label)
+            self.tree.heading("destination", text="Destination")
+            self.tree.column("destination", width=200)
 
-            slab_qty = slab_mt = slab_mtk = slab_amount = 0
+            self.tree.heading("qty_mt", text="Qty / MT")
+            self.tree.column("qty_mt", width=100, anchor="center")
 
-            for entry in entries:
-                destination_name = entry[5]
-                qty = entry[6]
-                mt = entry[7]
-                mtk = entry[9]
-                amount = entry[10]
+            self.tree.heading("km", text="KM")
+            self.tree.column("km", width=80, anchor="center")
 
-                self.tree.insert(parent, "end", text="", values=(
+            self.tree.heading("mtk", text="MTK")
+            self.tree.column("mtk", width=100, anchor="center")
+
+            self.tree.heading("amount", text="Amount")
+            self.tree.column("amount", width=100, anchor="center")
+
+            self.tree.pack(padx=10, pady=5, fill="x")
+
+            query = f'''
+                SELECT 
+                    d.name AS dealer_name,
+                    ds.name AS destination_name,
+                    dr.no_bags, dr.mt, dr.km, dr.mtk, dr.amount
+                FROM dealer_entry dr
+                JOIN range_entry re ON dr.range_entry_id = re.id
+                JOIN destination_entry de ON re.destination_entry_id = de.id
+                JOIN dealer d ON dr.dealer_id = d.id
+                JOIN destination ds ON de.destination_id = ds.id
+                WHERE de.id IN ({placeholders})
+                ORDER BY ds.name, d.name
+            '''
+            self.c.execute(query, self.destination_entry_ids)
+            rows = self.c.fetchall()
+
+            total_qty = total_mt = total_mtk = total_amount = 0
+            for row in rows:
+                destination_name = row[1]
+                qty = row[2]
+                mt = row[3]
+                km = row[4]
+                mtk = row[5]
+                amount = row[6]
+
+                self.tree.insert("", "end", values=(
                     destination_name,
                     f"{qty} / {round(mt, 2)}",
+                    round(km, 2),
                     round(mtk, 2),
                     round(amount, 2)
                 ))
 
-                slab_qty += qty
-                slab_mt += mt
-                slab_mtk += mtk
-                slab_amount += amount
+                total_qty += qty
+                total_mt += mt
+                total_mtk += mtk
+                total_amount += amount
 
-            self.tree.insert(parent, "end", text="TOTAL", values=(
+            # Total row
+            self.tree.insert("", "end", values=(
+                "TOTAL",
+                f"{total_qty} / {round(total_mt, 2)}",
                 "",
-                f"{slab_qty} / {round(slab_mt, 2)}",
-                round(slab_mtk, 2),
-                round(slab_amount, 2)
+                round(total_mtk, 2),
+                round(total_amount, 2)
             ))
 
-            self.grand_qty += slab_qty
-            self.grand_mt += slab_mt
-            self.grand_mtk += slab_mtk
-            self.grand_amount += slab_amount
+            amount = round(total_amount, 2)
+        else:
 
-        self.tree.insert("", "end", text="GRAND TOTAL", values=(
-            "",
-            f"{self.grand_qty} / {round(self.grand_mt, 2)}",
-            round(self.grand_mtk, 2),
-            round(self.grand_amount, 2)
-        ))
+            Label(self.frame, text="TRANSPORTATION", font=("Arial", 12, "bold")).pack(pady=(10, 0))
 
-        amount = round(self.grand_amount, 2)
-        amount_words = num2words(amount, to='currency', lang='en_IN').replace("euro", "rupees").replace("cents", "paise").capitalize()
+            columns = ("destination", "qty_mt", "mtk", "amount")
+            self.tree = ttk.Treeview(self.frame, columns=columns, show="tree headings")
 
-        Label(
-            self.frame,
-            text=f"We are claiming for Rs. {amount:,.2f} ({amount_words})",
-            font=("Arial", 10, "bold"),
-            pady=10
-        ).pack()
+            self.tree.heading("#0", text="Slab")
+            self.tree.column("#0", width=200)
+
+            self.tree.heading("destination", text="Destination")
+            self.tree.column("destination", width=200)
+
+            self.tree.heading("qty_mt", text="Qty / MT")
+            self.tree.column("qty_mt", width=100, anchor="center")
+
+            self.tree.heading("mtk", text="MTK")
+            self.tree.column("mtk", width=80, anchor="center")
+
+            self.tree.heading("amount", text="Amount")
+            self.tree.column("amount", width=100, anchor="center")
+
+            self.tree.pack(padx=10, pady=5, fill="x")
+
+            placeholders = ",".join("?" for _ in self.destination_entry_ids)
+            query = f'''
+                SELECT rr.from_km, rr.to_km, rr.rate, rr.is_mtk,
+                    d.name AS dealer_name,
+                    (ds.name || CASE WHEN ds.place IS NOT NULL AND ds.place != '' THEN ' (' || ds.place || ')' ELSE '' END) AS destination_name,
+                    dr.no_bags, dr.mt, dr.km, dr.mtk, dr.amount
+                FROM dealer_entry dr
+                JOIN range_entry re ON dr.range_entry_id = re.id
+                JOIN destination_entry de ON re.destination_entry_id = de.id
+                JOIN dealer d ON dr.dealer_id = d.id
+                JOIN destination ds ON de.destination_id = ds.id
+                JOIN rate_range rr ON re.rate_range_id = rr.id
+                WHERE de.id IN ({placeholders})
+                ORDER BY rr.from_km, ds.name, d.name
+            '''
+            self.c.execute(query, self.destination_entry_ids)
+            rows = self.c.fetchall()
+
+            grouped = defaultdict(list)
+            for row in rows:
+                key = (row[0], row[1], row[2], row[3])  # from_km, to_km, rate, is_mtk
+                grouped[key].append(row)
+
+            self.grand_qty = self.grand_mt = self.grand_mtk = self.grand_amount = 0
+
+            for (from_km, to_km, rate, is_mtk), entries in grouped.items():
+                slab_label = f"SLAB {from_km}-{to_km} KM @ ₹{rate:.2f}"
+                parent = self.tree.insert("", "end", text=slab_label)
+
+                slab_qty = slab_mt = slab_mtk = slab_amount = 0
+
+                for entry in entries:
+                    destination_name = entry[5]
+                    qty = entry[6]
+                    mt = entry[7]
+                    mtk = entry[9]
+                    amount = entry[10]
+
+                    self.tree.insert(parent, "end", text="", values=(
+                        destination_name,
+                        f"{qty} / {round(mt, 2)}",
+                        round(mtk, 2),
+                        round(amount, 2)
+                    ))
+
+                    slab_qty += qty
+                    slab_mt += mt
+                    slab_mtk += mtk
+                    slab_amount += amount
+
+                self.tree.insert(parent, "end", text="TOTAL", values=(
+                    "",
+                    f"{slab_qty} / {round(slab_mt, 2)}",
+                    round(slab_mtk, 2),
+                    round(slab_amount, 2)
+                ))
+
+                self.grand_qty += slab_qty
+                self.grand_mt += slab_mt
+                self.grand_mtk += slab_mtk
+                self.grand_amount += slab_amount
+
+            self.tree.insert("", "end", text="GRAND TOTAL", values=(
+                "",
+                f"{self.grand_qty} / {round(self.grand_mt, 2)}",
+                round(self.grand_mtk, 2),
+                round(self.grand_amount, 2)
+            ))
+
+            amount = round(self.grand_amount, 2)
+            amount_words = num2words(amount, to='currency', lang='en_IN').replace("euro", "rupees").replace("cents", "paise").capitalize()
+
+            Label(
+                self.frame,
+                text=f"We are claiming for Rs. {amount:,.2f} ({amount_words})",
+                font=("Arial", 10, "bold"),
+                pady=10
+            ).pack()
 
     def save_main_bill(self):
         try:
@@ -551,14 +636,32 @@ class MainBillPreviewPage:
             messagebox.showerror("Error", f"Failed to save main bill:\n{e}")
 
     def export_pdf(self):
-        
-        filename = f"main_bill_{self.main_bill_data['bill_number']}.pdf"
-        doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=20, leftMargin=20, topMargin=30, bottomMargin=20)
 
         styles = getSampleStyleSheet()
-        styles.add(ParagraphStyle(name='SmallBold', fontSize=9, fontName='Helvetica-Bold'))
+        styles.add(ParagraphStyle(name='CenterBold', alignment=TA_CENTER, fontSize=11, leading=14, spaceAfter=6, spaceBefore=4, fontName='Helvetica-Bold'))
+        styles.add(ParagraphStyle(name='NormalBold', fontSize=10, leading=12, spaceAfter=3))
+        styles.add(ParagraphStyle(name='RightNormal', alignment=TA_RIGHT, fontSize=10, leading=12))
         styles.add(ParagraphStyle(name='Small', fontSize=9, fontName='Helvetica'))
-        styles.add(ParagraphStyle(name='Justify', alignment=TA_CENTER))
+
+
+        bill_no = self.main_bill_data.get("bill_number", "Unknown")
+        bill_filename = f"main_bill_{bill_no}.pdf"
+        is_garage_bill = False
+
+        # detect if garage
+        self.c.execute("""
+            SELECT COUNT(*) FROM destination 
+            WHERE id IN (
+                SELECT destination_id FROM destination_entry WHERE id IN (%s)
+            ) AND is_garage = 1
+        """ % (",".join(map(str, self.destination_entry_ids))))
+        if self.c.fetchone()[0] > 0:
+            is_garage_bill = True
+            bill_filename = f"garage_bill_{bill_no}.pdf"
+
+        pdf_path = os.path.join(os.getcwd(), bill_filename)
+        doc = SimpleDocTemplate(pdf_path, pagesize=A4, topMargin=40, bottomMargin=30, leftMargin=30, rightMargin=30)
+        
         elements = []
 
         # Header paragraph
@@ -633,110 +736,172 @@ class MainBillPreviewPage:
         
         elements.append(Spacer(1, 10))
 
-        # Table headers
-        table_data = [[
-            'Sl. No.', 'Destinations', 'Qty', 'Total Qty', 'KM', 'MT x KM', 'Total MT x KM', 'Rate', 'Amount Rs.', 'Total Amount'
-        ]]
+        section_title = "TRANSPORTATION (DEPOT)" if is_garage_bill else "TRANSPORTATION"
+        elements.append(Paragraph(section_title, styles["CenterBold"]))
+        elements.append(Spacer(1, 5))
 
-        # Query and group dealer entries
-        placeholders = ",".join("?" for _ in self.destination_entry_ids)
-        self.c.execute(f'''
-            SELECT rr.from_km, rr.to_km, rr.rate, rr.is_mtk,
-                d.name AS dealer_name,
-                dsd.place AS destination_place,
-                dr.no_bags, dr.mt, dr.km, dr.mt * dr.km AS qty_km, dr.mtk, dr.amount
-            FROM dealer_entry dr
-            JOIN range_entry re ON dr.range_entry_id = re.id
-            JOIN destination_entry de ON re.destination_entry_id = de.id
-            JOIN dealer d ON dr.dealer_id = d.id
-            JOIN destination dsd ON d.destination_id = dsd.id
-            JOIN rate_range rr ON re.rate_range_id = rr.id
-            WHERE de.id IN ({placeholders})
-            ORDER BY rr.from_km, dsd.place, d.name
-        ''', self.destination_entry_ids)
-        rows = self.c.fetchall()
+        total_amount = 0
+        grand_amount = 0
+        data = []
 
-        # Group by slab
-        grouped = defaultdict(list)
-        for row in rows:
-            key = (row[0], row[1], row[2], row[3])
-            grouped[key].append(row)
+        if is_garage_bill:
+            # Garage mode: flat dealer table
+            headers = ["SL/NO", "Destination", "Qty/MT", "KM", "MTK", "Amount"]
+            data.append(headers)
 
-        table_styles = []
-        sl_no = 1
-        row_index = 1
-        grand_qty = grand_mt = grand_mtk = grand_amount = 0
+            placeholders = ",".join("?" for _ in self.destination_entry_ids)
+            query = f'''
+                    SELECT 
+                        d.name AS dealer_name,
+                        ds.name AS destination_name,
+                        dr.no_bags, dr.mt, dr.km, dr.mtk, dr.amount
+                    FROM dealer_entry dr
+                    JOIN range_entry re ON dr.range_entry_id = re.id
+                    JOIN destination_entry de ON re.destination_entry_id = de.id
+                    JOIN dealer d ON dr.dealer_id = d.id
+                    JOIN destination ds ON de.destination_id = ds.id
+                    WHERE de.id IN ({placeholders})
+                    ORDER BY ds.name, d.name
+                    '''
 
-        for (from_km, to_km, rate, is_mtk), entries in grouped.items():
-            start_row = row_index
-            slab_qty = slab_mt = slab_mtk = slab_amount = 0
-            slab_label = f"SLAB {int(from_km)}-{int(to_km)}"
+            self.c.execute(query, self.destination_entry_ids)
+            rows = self.c.fetchall()
 
-            for entry in entries:
-                destination = entry[5]
-                qty = entry[7]
-                mt = entry[7]
-                km = entry[8]
-                qty_km = entry[9]
-                mtk = entry[10]
-                amount = entry[11]
-
-                table_data.append([
-                    sl_no, destination, f"{qty:.2f}", "", slab_label,
-                    f"{qty_km:.2f}", "", f"{rate:.2f}", f"{amount:.2f}", ""
+            for i, row in enumerate(rows, 1):
+                dealer_name, destination_name, bags, mt, km, mtk, amount = row
+                total_amount += amount or 0
+                data.append([
+                    str(i),
+                    destination_name,
+                    f"{mt:.2f}",
+                    f"{km:.2f}",
+                    f"{mtk:.2f}",
+                    f"{amount:.2f}"
                 ])
 
-                slab_qty += qty
-                slab_mt += mt
-                slab_mtk += mtk
-                slab_amount += amount
-                row_index += 1
+            # Add total row
+            data.append(["", "TOTAL", "", "", "", f"{total_amount:.2f}"])
+            tbl = Table(data, colWidths=[40, 150, 70, 60, 70, 80])
+            tbl.setStyle(TableStyle([
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('BACKGROUND', (0, -1), (-1, -1), colors.whitesmoke),
+                ('FONTNAME', (1, -1), (-1, -1), 'Helvetica-Bold'),
+            ]))
+            elements.append(tbl)
+            grand_amount = total_amount
 
-            # Merge total columns
-            table_data[start_row][3] = f"{slab_mt:.2f}"
-            table_data[start_row][6] = f"{slab_mtk:.2f}"
-            table_data[start_row][9] = f"{slab_amount:.2f}"
+        else:
+            
+            # Table headers
+            table_data = [[
+                'Sl. No.', 'Destinations', 'Qty', 'Total Qty', 'KM', 'MT x KM', 'Total MT x KM', 'Rate', 'Amount Rs.', 'Total Amount'
+            ]]
+            
+             # Query and group dealer entries
+            placeholders = ",".join("?" for _ in self.destination_entry_ids)
+            self.c.execute(f'''
+                SELECT rr.from_km, rr.to_km, rr.rate, rr.is_mtk,
+                    d.name AS dealer_name,
+                    dsd.place AS destination_place,
+                    dr.no_bags, dr.mt, dr.km, dr.mt * dr.km AS qty_km, dr.mtk, dr.amount
+                FROM dealer_entry dr
+                JOIN range_entry re ON dr.range_entry_id = re.id
+                JOIN destination_entry de ON re.destination_entry_id = de.id
+                JOIN dealer d ON dr.dealer_id = d.id
+                JOIN destination dsd ON d.destination_id = dsd.id
+                JOIN rate_range rr ON re.rate_range_id = rr.id
+                WHERE de.id IN ({placeholders})
+                ORDER BY rr.from_km, dsd.place, d.name
+            ''', self.destination_entry_ids)
+            rows = self.c.fetchall()
+            
+            
+            # Group by slab
+            grouped = defaultdict(list)
+            for row in rows:
+                key = (row[0], row[1], row[2], row[3])
+                grouped[key].append(row)
 
-            # Add row spans
-            table_styles.extend([
-                ('SPAN', (0, start_row), (0, row_index - 1)),
-                ('SPAN', (3, start_row), (3, row_index - 1)),
-                ('SPAN', (4, start_row), (4, row_index - 1)),
-                ('SPAN', (6, start_row), (6, row_index - 1)),
-                ('SPAN', (7, start_row), (7, row_index - 1)),
-                ('SPAN', (9, start_row), (9, row_index - 1)),
+            table_styles = []
+            sl_no = 1
+            row_index = 1
+            grand_qty = grand_mt = grand_mtk = grand_amount = 0
+            
+                
+            for (from_km, to_km, rate, is_mtk), entries in grouped.items():
+                start_row = row_index
+                slab_qty = slab_mt = slab_mtk = slab_amount = 0
+                slab_label = f"SLAB {int(from_km)}-{int(to_km)}"
+
+                for entry in entries:
+                    destination = entry[5]
+                    qty = entry[7]
+                    mt = entry[7]
+                    km = entry[8]
+                    qty_km = entry[9]
+                    mtk = entry[10]
+                    amount = entry[11]
+
+                    table_data.append([
+                        sl_no, destination, f"{qty:.2f}", "", slab_label,
+                        f"{qty_km:.2f}", "", f"{rate:.2f}", f"{amount:.2f}", ""
+                    ])
+
+                    slab_qty += qty
+                    slab_mt += mt
+                    slab_mtk += mtk
+                    slab_amount += amount
+                    row_index += 1
+
+                # Merge total columns
+                table_data[start_row][3] = f"{slab_mt:.2f}"
+                table_data[start_row][6] = f"{slab_mtk:.2f}"
+                table_data[start_row][9] = f"{slab_amount:.2f}"
+
+                # Add row spans
+                table_styles.extend([
+                    ('SPAN', (0, start_row), (0, row_index - 1)),
+                    ('SPAN', (3, start_row), (3, row_index - 1)),
+                    ('SPAN', (4, start_row), (4, row_index - 1)),
+                    ('SPAN', (6, start_row), (6, row_index - 1)),
+                    ('SPAN', (7, start_row), (7, row_index - 1)),
+                    ('SPAN', (9, start_row), (9, row_index - 1)),
+                ])
+
+                sl_no += 1
+                grand_qty += slab_qty
+                grand_mt += slab_mt
+                grand_mtk += slab_mtk
+                grand_amount += slab_amount
+
+            # Grand total row
+            table_data.append([
+                "", "GRAND TOTAL", "", f"{grand_mt:.2f}", "", "", f"{grand_mtk:.2f}", "", "", f"{grand_amount:.2f}"
             ])
-
-            sl_no += 1
-            grand_qty += slab_qty
-            grand_mt += slab_mt
-            grand_mtk += slab_mtk
-            grand_amount += slab_amount
-
-        # Grand total row
-        table_data.append([
-            "", "GRAND TOTAL", "", f"{grand_mt:.2f}", "", "", f"{grand_mtk:.2f}", "", "", f"{grand_amount:.2f}"
-        ])
-
-        # Table construction
-        tbl = Table(table_data, colWidths=[35, 90, 40, 55, 55, 55, 70, 40, 70, 75])
-        tbl.setStyle(TableStyle(table_styles + [
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 10),
-            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 9),
-            ('GRID', (0, 0), (-1, -1), 0.25, colors.black),
-            ('BOX', (0, 0), (-1, -1), 1, colors.black),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        elements.append(tbl)
-        elements.append(Spacer(1, 12))
+            
+            # Table construction
+            tbl = Table(table_data, colWidths=[35, 90, 40, 55, 55, 55, 70, 40, 70, 75])
+            tbl.setStyle(TableStyle(table_styles + [
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
+                ('GRID', (0, 0), (-1, -1), 0.25, colors.black),
+                ('BOX', (0, 0), (-1, -1), 1, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ]))
+            elements.append(tbl)
+            elements.append(Spacer(1, 12))
 
         # Rupees in words
         grand_amount_str = f"{grand_amount:,.2f}".replace(",", "")
+        elements.append(Spacer(1, 12))
         amount_words = num2words((float(grand_amount_str)), lang='en_IN').replace("euro", "rupees").title() + " Only"
         elements.append(Paragraph(
             f"We are claiming for Rs. {grand_amount:,.2f} ({amount_words}) for Clearing & Transportation Bill of Fertilizer.",
@@ -761,12 +926,15 @@ class MainBillPreviewPage:
         doc.build(elements)
         try:
             if platform.system() == "Windows":
-                os.startfile(filename)
+                os.startfile(bill_filename)
             elif platform.system() == "Darwin":
-                os.system(f"open '{filename}'")
+                os.system(f"open '{bill_filename}'")
             else:
-                os.system(f"xdg-open '{filename}'")
+                os.system(f"xdg-open '{bill_filename}'")
         except Exception as e:
             print("Could not open PDF automatically:", e)
 
-        messagebox.showinfo("Exported", f"PDF saved and opened: {filename}")
+        messagebox.showinfo("Exported", f"PDF saved and opened: {bill_filename}")
+        
+        messagebox.showinfo("Success", f"PDF saved as {bill_filename}")
+
