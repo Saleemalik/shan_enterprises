@@ -416,45 +416,57 @@ class MainBillPreviewPage:
 
             self.tree.pack(padx=10, pady=5, fill="x")
 
+            # --- Fetch all entries ---
+            placeholders = ",".join("?" for _ in self.destination_entry_ids)
             query = f'''
                 SELECT 
-                    d.name AS dealer_name,
                     ds.name AS destination_name,
                     dr.no_bags, dr.mt, dr.km, dr.mtk, dr.amount
                 FROM dealer_entry dr
                 JOIN range_entry re ON dr.range_entry_id = re.id
                 JOIN destination_entry de ON re.destination_entry_id = de.id
-                JOIN dealer d ON dr.dealer_id = d.id
                 JOIN destination ds ON de.destination_id = ds.id
                 WHERE de.id IN ({placeholders})
-                ORDER BY ds.name, d.name
+                ORDER BY ds.name
             '''
             self.c.execute(query, self.destination_entry_ids)
             rows = self.c.fetchall()
 
-            total_qty = total_mt = total_mtk = total_amount = 0
+            # --- Group by destination name ---
+            from collections import defaultdict
+            grouped = defaultdict(lambda: {"qty": 0, "mt": 0, "km": 0, "mtk": 0, "amount": 0})
             for row in rows:
-                destination_name = row[1]
-                qty = row[2]
-                mt = row[3]
-                km = row[4]
-                mtk = row[5]
-                amount = row[6]
+                destination = row[0]
+                qty = row[1]
+                mt = row[2]
+                km = row[3]
+                mtk = row[4]
+                amount = row[5]
 
+                grouped[destination]["qty"] += qty
+                grouped[destination]["mt"] += mt
+                grouped[destination]["km"] = km  # Same for all entries of that garage
+                grouped[destination]["mtk"] += mtk
+                grouped[destination]["amount"] += amount
+
+            # --- Totals ---
+            total_qty = total_mt = total_mtk = total_amount = 0
+
+            # Insert grouped destinations
+            for destination, vals in grouped.items():
                 self.tree.insert("", "end", values=(
-                    destination_name,
-                    f"{qty} / {round(mt, 2)}",
-                    round(km, 2),
-                    round(mtk, 2),
-                    round(amount, 2)
+                    destination,
+                    f"{vals['qty']} / {round(vals['mt'], 2)}",
+                    round(vals['km'], 2),
+                    round(vals['mtk'], 2),
+                    round(vals['amount'], 2)
                 ))
+                total_qty += vals["qty"]
+                total_mt += vals["mt"]
+                total_mtk += vals["mtk"]
+                total_amount += vals["amount"]
 
-                total_qty += qty
-                total_mt += mt
-                total_mtk += mtk
-                total_amount += amount
-
-            # Total row
+            # --- Total row ---
             self.tree.insert("", "end", values=(
                 "TOTAL",
                 f"{total_qty} / {round(total_mt, 2)}",
@@ -464,8 +476,9 @@ class MainBillPreviewPage:
             ))
 
             amount = round(total_amount, 2)
-        else:
 
+        else:
+            # --- NORMAL BILL MODE ---
             Label(self.frame, text="TRANSPORTATION", font=("Arial", 12, "bold")).pack(pady=(10, 0))
 
             columns = ("destination", "qty_mt", "mtk", "amount")
@@ -516,8 +529,9 @@ class MainBillPreviewPage:
             for (from_km, to_km, rate, is_mtk), entries in grouped.items():
                 slab_label = f"SLAB {from_km}-{to_km} KM @ ₹{rate:.2f}"
                 parent = self.tree.insert("", "end", text=slab_label)
-
-                slab_qty = slab_mt = slab_mtk = slab_amount = 0
+                
+                # Second-level grouping by destination name
+                dest_grouped = defaultdict(lambda: {"qty": 0, "mt": 0, "mtk": 0, "amount": 0})
 
                 for entry in entries:
                     destination_name = entry[5]
@@ -526,25 +540,35 @@ class MainBillPreviewPage:
                     mtk = entry[9]
                     amount = entry[10]
 
+                    dest_grouped[destination_name]["qty"] += qty
+                    dest_grouped[destination_name]["mt"] += mt
+                    dest_grouped[destination_name]["mtk"] += mtk
+                    dest_grouped[destination_name]["amount"] += amount
+
+
+                slab_qty = slab_mt = slab_mtk = slab_amount = 0
+
+                # Insert each destination’s subtotal
+                for dest_name, vals in dest_grouped.items():
                     self.tree.insert(parent, "end", text="", values=(
-                        destination_name,
-                        f"{qty} / {round(mt, 2)}",
-                        round(mtk, 2),
-                        round(amount, 2)
+                        dest_name,
+                        f"{vals['qty']} / {round(vals['mt'], 2)}",
+                        round(vals['mtk'], 2),
+                        round(vals['amount'], 2)
                     ))
 
-                    slab_qty += qty
-                    slab_mt += mt
-                    slab_mtk += mtk
-                    slab_amount += amount
-
+                    slab_qty += vals["qty"]
+                    slab_mt += vals["mt"]
+                    slab_mtk += vals["mtk"]
+                    slab_amount += vals["amount"]
+                
+                # Slab total row
                 self.tree.insert(parent, "end", text="TOTAL", values=(
                     "",
                     f"{slab_qty} / {round(slab_mt, 2)}",
                     round(slab_mtk, 2),
                     round(slab_amount, 2)
                 ))
-
                 self.grand_qty += slab_qty
                 self.grand_mt += slab_mt
                 self.grand_mtk += slab_mtk
@@ -745,42 +769,72 @@ class MainBillPreviewPage:
         data = []
 
         if is_garage_bill:
-            # Garage mode: flat dealer table
+            # Garage mode: one aggregated row per destination
             headers = ["SL/NO", "Destination", "Qty/MT", "KM", "MTK", "Amount"]
-            data.append(headers)
+            data = [headers]
 
             placeholders = ",".join("?" for _ in self.destination_entry_ids)
             query = f'''
-                    SELECT 
-                        d.name AS dealer_name,
-                        ds.name AS destination_name,
-                        dr.no_bags, dr.mt, dr.km, dr.mtk, dr.amount
-                    FROM dealer_entry dr
-                    JOIN range_entry re ON dr.range_entry_id = re.id
-                    JOIN destination_entry de ON re.destination_entry_id = de.id
-                    JOIN dealer d ON dr.dealer_id = d.id
-                    JOIN destination ds ON de.destination_id = ds.id
-                    WHERE de.id IN ({placeholders})
-                    ORDER BY ds.name, d.name
-                    '''
-
+                SELECT 
+                    ds.name AS destination_name,
+                    dr.no_bags, dr.mt, dr.km, dr.mtk, dr.amount
+                FROM dealer_entry dr
+                JOIN range_entry re ON dr.range_entry_id = re.id
+                JOIN destination_entry de ON re.destination_entry_id = de.id
+                JOIN destination ds ON de.destination_id = ds.id
+                WHERE de.id IN ({placeholders})
+                ORDER BY ds.name
+            '''
             self.c.execute(query, self.destination_entry_ids)
             rows = self.c.fetchall()
 
-            for i, row in enumerate(rows, 1):
-                dealer_name, destination_name, bags, mt, km, mtk, amount = row
-                total_amount += amount or 0
-                data.append([
-                    str(i),
-                    destination_name,
-                    f"{mt:.2f}",
-                    f"{km:.2f}",
-                    f"{mtk:.2f}",
-                    f"{amount:.2f}"
-                ])
+            # Group & aggregate by destination (single aggregated row per destination)
+            grouped = defaultdict(lambda: {"qty": 0, "mt": 0.0, "km": 0.0, "mtk": 0.0, "amount": 0.0, "count_km": 0})
+            for row in rows:
+                dest_name, qty, mt, km, mtk, amount = row
+                grouped[dest_name]["qty"] += (qty or 0)
+                grouped[dest_name]["mt"] += (mt or 0.0)
+                # km might be same for all entries of a garage; store last non-zero / compute average if needed
+                if km is not None:
+                    grouped[dest_name]["km"] = km
+                grouped[dest_name]["mtk"] += (mtk or 0.0)
+                grouped[dest_name]["amount"] += (amount or 0.0)
 
-            # Add total row
-            data.append(["", "TOTAL", "", "", "", f"{total_amount:.2f}"])
+            # Build rows: one per destination
+            sl = 1
+            grand_tot_mt = grand_tot_km = grand_tot_mtk = grand_tot_amount = 0.0
+
+            for dest, vals in grouped.items():
+                dest_mt = vals["mt"]
+                dest_km = vals.get("km", 0.0) or 0.0
+                dest_mtk = vals["mtk"]
+                dest_amount = vals["amount"]
+
+                data.append([
+                    str(sl),
+                    dest,
+                    f"{dest_mt:.2f}",
+                    f"{dest_km:.2f}",
+                    f"{dest_mtk:.2f}",
+                    f"{dest_amount:.2f}"
+                ])
+                sl += 1
+
+                grand_tot_mt += dest_mt
+                # For grand KM we usually don't sum km; if you want sum of KM use below, otherwise keep as 0 or avg.
+                grand_tot_km += dest_km
+                grand_tot_mtk += dest_mtk
+                grand_tot_amount += dest_amount
+
+            # Final GRAND TOTAL row
+            data.append([
+                "", "GRAND TOTAL",
+                f"{grand_tot_mt:.2f}",
+                f"{grand_tot_km:.2f}",
+                f"{grand_tot_mtk:.2f}",
+                f"{grand_tot_amount:.2f}"
+            ])
+
             tbl = Table(data, colWidths=[40, 150, 70, 60, 70, 80])
             tbl.setStyle(TableStyle([
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
@@ -790,17 +844,17 @@ class MainBillPreviewPage:
                 ('BACKGROUND', (0, -1), (-1, -1), colors.whitesmoke),
                 ('FONTNAME', (1, -1), (-1, -1), 'Helvetica-Bold'),
             ]))
+
             elements.append(tbl)
-            grand_amount = total_amount
+            grand_amount = grand_tot_amount
 
         else:
-            
             # Table headers
             table_data = [[
                 'Sl. No.', 'Destinations', 'Qty', 'Total Qty', 'KM', 'MT x KM', 'Total MT x KM', 'Rate', 'Amount Rs.', 'Total Amount'
             ]]
             
-             # Query and group dealer entries
+            # Query and group dealer entries
             placeholders = ",".join("?" for _ in self.destination_entry_ids)
             self.c.execute(f'''
                 SELECT rr.from_km, rr.to_km, rr.rate, rr.is_mtk,
@@ -818,57 +872,65 @@ class MainBillPreviewPage:
             ''', self.destination_entry_ids)
             rows = self.c.fetchall()
             
-            
             # Group by slab
             grouped = defaultdict(list)
             for row in rows:
-                key = (row[0], row[1], row[2], row[3])
+                key = (row[0], row[1], row[2], row[3])  # from_km, to_km, rate, is_mtk
                 grouped[key].append(row)
 
             table_styles = []
             sl_no = 1
             row_index = 1
             grand_qty = grand_mt = grand_mtk = grand_amount = 0
-            
-                
+
             for (from_km, to_km, rate, is_mtk), entries in grouped.items():
                 start_row = row_index
                 slab_qty = slab_mt = slab_mtk = slab_amount = 0
                 slab_label = f"SLAB {int(from_km)}-{int(to_km)}"
 
+                # ---- NEW: group entries by destination within each slab ----
+                dest_grouped = defaultdict(lambda: {"qty": 0, "mt": 0, "mtk": 0, "amount": 0, "km": 0})
                 for entry in entries:
-                    destination = entry[5]
-                    qty = entry[7]
+                    dest_name = entry[5]
+                    qty = entry[6]
                     mt = entry[7]
                     km = entry[8]
-                    qty_km = entry[9]
                     mtk = entry[10]
                     amount = entry[11]
 
+                    dest_grouped[dest_name]["qty"] += qty
+                    dest_grouped[dest_name]["mt"] += mt
+                    dest_grouped[dest_name]["km"] = km  # usually same for same dest
+                    dest_grouped[dest_name]["mtk"] += mtk
+                    dest_grouped[dest_name]["amount"] += amount
+
+                # ---- Insert aggregated destination rows ----
+                for dest_name, vals in dest_grouped.items():
                     table_data.append([
-                        sl_no, destination, f"{qty:.2f}", "", slab_label,
-                        f"{qty_km:.2f}", "", f"{rate:.2f}", f"{amount:.2f}", ""
+                        sl_no, dest_name,
+                        f"{vals['qty']:.2f}", "", slab_label,
+                        f"{vals['mt'] * vals['km']:.2f}", "", f"{rate:.2f}", f"{vals['amount']:.2f}", ""
                     ])
 
-                    slab_qty += qty
-                    slab_mt += mt
-                    slab_mtk += mtk
-                    slab_amount += amount
+                    slab_qty += vals["qty"]
+                    slab_mt += vals["mt"]
+                    slab_mtk += vals["mtk"]
+                    slab_amount += vals["amount"]
                     row_index += 1
 
-                # Merge total columns
+                # Merge total columns for slab
                 table_data[start_row][3] = f"{slab_mt:.2f}"
                 table_data[start_row][6] = f"{slab_mtk:.2f}"
                 table_data[start_row][9] = f"{slab_amount:.2f}"
 
-                # Add row spans
+                # Add span styles
                 table_styles.extend([
-                    ('SPAN', (0, start_row), (0, row_index - 1)),
-                    ('SPAN', (3, start_row), (3, row_index - 1)),
-                    ('SPAN', (4, start_row), (4, row_index - 1)),
-                    ('SPAN', (6, start_row), (6, row_index - 1)),
-                    ('SPAN', (7, start_row), (7, row_index - 1)),
-                    ('SPAN', (9, start_row), (9, row_index - 1)),
+                    ('SPAN', (0, start_row), (0, row_index - 1)),  # SL no
+                    ('SPAN', (3, start_row), (3, row_index - 1)),  # Total Qty
+                    ('SPAN', (4, start_row), (4, row_index - 1)),  # KM
+                    ('SPAN', (6, start_row), (6, row_index - 1)),  # Total MT x KM
+                    ('SPAN', (7, start_row), (7, row_index - 1)),  # Rate
+                    ('SPAN', (9, start_row), (9, row_index - 1)),  # Total Amount
                 ])
 
                 sl_no += 1
@@ -882,7 +944,7 @@ class MainBillPreviewPage:
                 "", "GRAND TOTAL", "", f"{grand_mt:.2f}", "", "", f"{grand_mtk:.2f}", "", "", f"{grand_amount:.2f}"
             ])
             
-            # Table construction
+            # Build ReportLab table
             tbl = Table(table_data, colWidths=[35, 90, 40, 55, 55, 55, 70, 40, 70, 75])
             tbl.setStyle(TableStyle(table_styles + [
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
