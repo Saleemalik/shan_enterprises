@@ -85,7 +85,6 @@ class DestinationEntryPage:
         Button(top_row, text="← Back to Dashboard", command=lambda: self.home_frame.tkraise()).pack(side='left', pady=10)
         Button(top_row, text="⟳ Clear", command=self.clear).pack(side='left', pady=10, padx=5)
 
-
         # Title centered
         Label(top_row, text="Destination Entry Form", font=("Arial", 16)).pack(side='left', expand=True, pady=10)
 
@@ -94,13 +93,16 @@ class DestinationEntryPage:
 
         form = Frame(self.frame)
         form.pack(pady=10)
+        
+        form.grid_columnconfigure(0, weight=1, uniform="col")
+        form.grid_columnconfigure(1, weight=3, uniform="col")
 
         Label(form, text="Destination").grid(row=0, column=0)
-        self.destination_cb = ttk.Combobox(form, state="readonly")
+        self.destination_cb = ttk.Combobox(form, state="readonly", width=60)
         self.destination_cb.grid(row=0, column=1, padx=5)
 
         Label(form, text="Letter Note").grid(row=1, column=0)
-        self.letter_note_text = Text(form, height=5, width=60, pady=5)
+        self.letter_note_text = Text(form, height=5, width=100, pady=5)
         self.letter_note_text.grid(row=1, column=1, pady=5)
 
         Label(form, text="Bill Number").grid(row=2, column=0)
@@ -113,7 +115,7 @@ class DestinationEntryPage:
         self.date_entry.grid(row=3, column=1)
 
         Label(form, text="To Address").grid(row=4, column=0, pady=5)
-        self.to_address_text = Text(form, height=5, width=60)
+        self.to_address_text = Text(form, height=5, width=100, pady=5)
         self.to_address_text.grid(row=4, column=1, pady=5)
 
         Button(form, text="+ Add Range", command=self.add_range_frame).grid(row=5, column=0, columnspan=2, pady=10)
@@ -123,7 +125,7 @@ class DestinationEntryPage:
 
         Label(dealer_select_frame, text="Search Dealer").grid(row=0, column=0, padx=5)
         self.dealer_search_var = StringVar()
-        self.dealer_search_cb = ttk.Combobox(dealer_select_frame, textvariable=self.dealer_search_var, width=40)
+        self.dealer_search_cb = ttk.Combobox(dealer_select_frame, textvariable=self.dealer_search_var, width=70)
         self.dealer_search_cb.bind('<KeyRelease>', self.filter_dealers)
         self.dealer_search_cb.bind('<Button-1>', lambda e: self.dealer_search_cb.event_generate('<Down>'))
         self.dealer_search_cb.bind('<Return>', lambda e: self.dealer_search_cb.event_generate('<Down>'))
@@ -131,6 +133,13 @@ class DestinationEntryPage:
 
         Button(dealer_select_frame, text="➕ Add Selected Dealer", command=self.add_dealer_by_search).grid(row=0, column=3, padx=5)
         
+        Button(
+            dealer_select_frame,
+            text="✖",
+            width=3,
+            command=lambda: self.dealer_search_var.set("")
+        ).grid(row=0, column=2, padx=2)
+
         self.range_container = Frame(self.frame)
         self.range_container.pack(fill='both', expand=True)
 
@@ -845,7 +854,6 @@ class DestinationEntryPage:
             "rate": rate,
             "is_mtk": is_mtk,
         })
-
 
     def load_existing_entry(self, destination_entry_id):
         self.clear(False)
