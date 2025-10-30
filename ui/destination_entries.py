@@ -1,4 +1,5 @@
 from tkinter import *
+import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime
 from reportlab.lib import colors
@@ -8,6 +9,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import os
 import json
 from tkcalendar import DateEntry
+
 
 class DestinationEntryPage:
     def __init__(self, frame, home_frame, conn):
@@ -75,7 +77,6 @@ class DestinationEntryPage:
 
         self.build_ui()
 
-
     def build_ui(self):
         top_row = Frame(self.frame)
         top_row.pack(fill='x', padx=10, pady=5)
@@ -116,14 +117,86 @@ class DestinationEntryPage:
         self.to_address_text.grid(row=4, column=1, pady=5)
 
         Button(form, text="+ Add Range", command=self.add_range_frame).grid(row=5, column=0, columnspan=2, pady=10)
+        
+        dealer_select_frame = Frame(form)
+        dealer_select_frame.grid(row=6, column=0, columnspan=2, pady=5)
 
+        Label(dealer_select_frame, text="Search Dealer").grid(row=0, column=0, padx=5)
+        self.dealer_search_var = StringVar()
+        self.dealer_search_cb = ttk.Combobox(dealer_select_frame, textvariable=self.dealer_search_var, width=40)
+        self.dealer_search_cb.bind('<KeyRelease>', self.filter_dealers)
+        self.dealer_search_cb.bind('<Button-1>', lambda e: self.dealer_search_cb.event_generate('<Down>'))
+        self.dealer_search_cb.bind('<Return>', lambda e: self.dealer_search_cb.event_generate('<Down>'))
+        self.dealer_search_cb.grid(row=0, column=1, padx=5)
+
+        Button(dealer_select_frame, text="➕ Add Selected Dealer", command=self.add_dealer_by_search).grid(row=0, column=3, padx=5)
+        
         self.range_container = Frame(self.frame)
         self.range_container.pack(fill='both', expand=True)
 
         self.load_destinations()
         self.load_entry_cache()
         self.save_button.pack(pady=10)
+    
+    def filter_dealers(self, event):
+        """Filter dealer combobox options based on user input."""
         
+        # if no dealer_map yet, nothing to filter
+        if not hasattr(self, 'dealer_map') or not self.dealer_map:
+            return
+
+        # preserve current text and caret position
+        current_text = self.dealer_search_var.get()
+        try:
+            caret_pos = self.dealer_search_cb.index(tk.INSERT)
+        except Exception:
+            caret_pos = len(current_text)
+
+        low = current_text.strip().lower()
+
+        # filter values by substring match
+        all_keys = list(self.dealer_map.keys())
+        if low == "":
+            filtered = all_keys
+        else:
+            filtered = [k for k in all_keys if low in k.lower()]
+
+        # update combobox values without changing the text the user is typing
+        self.dealer_search_cb['values'] = filtered
+
+        # restore typed text and caret, and keep focus
+        self.dealer_search_var.set(current_text)
+        self.dealer_search_cb.focus_set()
+        # ensure index is within bounds
+        caret_pos = max(0, min(len(current_text), caret_pos))
+        try:
+            self.dealer_search_cb.icursor(caret_pos)
+        except Exception:
+            pass
+
+        # Optionally open dropdown when there are matches and user has typed >=1 char:
+        # (uncomment the next two lines if you want the dropdown to auto-open after typing)
+        # if filtered and len(current_text) >= 1:
+        #     self.dealer_search_cb.event_generate('<Down>')
+        
+    def select_current_dealer(self, event=None):
+        """When user presses Enter, confirm dealer selection."""
+        current_text = self.dealer_search_var.get().strip()
+        if not current_text:
+            return
+
+        # If the text exactly matches a dealer key, select that dealer
+        if current_text in self.dealer_map:
+            self.dealer_search_cb.set(current_text)
+            self.add_dealer_by_search()
+            return
+
+        # Otherwise, check if there's a close match
+        matches = [k for k in self.dealer_map.keys() if current_text.lower() in k.lower()]
+        if matches:
+            self.dealer_search_cb.set(matches[0])
+            self.add_dealer_by_search()
+
     def save_entry_cache(self):
         cache = {
             "destination": self.destination_cb.get(),
@@ -237,6 +310,9 @@ class DestinationEntryPage:
         self.destination_cb["values"] = [f"{id} - {name}" for id, name in dests]
         self.destination_map = {f"{id} - {name}": id for id, name in dests}
 
+        # Bind selection
+        self.destination_cb.bind("<<ComboboxSelected>>", self.load_dealers_for_destination)
+
     def add_range_frame(self):
         available_ranges = self.get_available_ranges()
         if not available_ranges:
@@ -289,23 +365,34 @@ class DestinationEntryPage:
 
                     self.conn.commit()
 
-    def setup_range(self, frame, range_cb):
-        val = range_cb.get()
-        if val == "Select Range":
-            return
+    def setup_range(self, frame, range_cb=None, rate_range_id=None):
+        # CASE 1: Called from UI (range combobox selection)
+        if range_cb is not None:
+            val = range_cb.get()
+            if val == "Select Range":
+                return
+            rate_range_id = int(val.split("|")[0].strip())
 
-        rate_range_id = int(val.split("|")[0].strip())
+            val = range_cb.get()
+        # CASE 2: Called programmatically (Add Dealer by Search)
+        elif rate_range_id is None:
+            raise ValueError("setup_range() requires either range_cb or rate_range_id")
+        
         self.used_ranges.add(rate_range_id)
-
+        
+        # Fetch range details
         self.c.execute("SELECT from_km, to_km, rate, is_mtk FROM rate_range WHERE id=?", (rate_range_id,))
         from_km, to_km, rate, is_mtk = self.c.fetchone()
+        
+        # Remove combobox UI if exists
+        if range_cb is not None:
+            range_cb.grid_remove()
+            for widget in frame.grid_slaves():
+                if isinstance(widget, Button):
+                    widget.grid_remove()
 
         range_label = f"Range: {from_km} – {to_km} km | Rate: ₹{rate:.2f} | {'MTK' if is_mtk else 'MT'}"
-        range_cb.grid_remove()
-        for widget in frame.grid_slaves():
-            if isinstance(widget, Button):
-                widget.grid_remove()
-
+        
         Label(frame, text=range_label).grid(row=0, column=0, columnspan=4, pady=5, sticky='w')
         Button(frame, text="Remove This Range", command=lambda: self.remove_range(frame, rate_range_id)).grid(row=0, column=4, sticky='e')
 
@@ -640,6 +727,124 @@ class DestinationEntryPage:
         for row in frame.dealer_rows:
             if 'dealer_cb' in row:
                 row['dealer_cb']['values'] = list(dealer_map.keys())
+    
+    def load_dealers_for_destination(self, event=None):
+        selected_dest = self.destination_cb.get()
+        if not selected_dest:
+            return
+
+        destination_id = self.destination_map[selected_dest]
+
+        self.c.execute("SELECT id, name, place, distance FROM dealer WHERE destination_id=?", (destination_id,))
+        dealers = self.c.fetchall()
+
+        if not dealers:
+            self.dealer_search_cb['values'] = []
+        # Load dealers for this destination
+            self.dealer_map = {}
+            self.dealer_search_var.set("")
+            messagebox.showinfo("No Dealers", "No dealers found for this destination.")
+            return
+
+        # Update dealer map and dropdown values
+        self.dealer_map = {
+            f"{id} - {name} ({place}) [{distance} km]": (id, name, place, distance)
+            for id, name, place, distance in dealers
+        }
+        self.dealer_search_cb['values'] = list(self.dealer_map.keys())
+
+        # Clear old text and set focus to dealer search box
+        self.dealer_search_var.set("")
+        self.dealer_search_cb.focus_set()
+
+        # 👇 Open the DEALER dropdown — not the destination one
+        self.frame.after(100, lambda: self.dealer_search_cb.event_generate('<Down>'))
+        
+        self.dealer_map_search = {
+            f"{id} - {name} ({place}) [{distance} km]": (id, name, place, distance)
+            for id, name, place, distance in dealers
+        }
+        self.dealer_search_cb["values"] = list(self.dealer_map_search.keys())
+
+    def add_dealer_by_search(self):
+        selected = self.dealer_search_cb.get()
+        if not selected or selected not in self.dealer_map_search:
+            messagebox.showerror("Error", "Please select a valid dealer.")
+            return
+
+        dealer_id, name, place, distance = self.dealer_map_search[selected]
+
+        # Find rate range for dealer distance
+        self.c.execute("SELECT id, from_km, to_km, rate, is_mtk FROM rate_range WHERE ? BETWEEN from_km AND to_km", (distance,))
+        range_row = self.c.fetchone()
+        if not range_row:
+            messagebox.showerror("Error", f"No rate range found for {distance} km.")
+            return
+
+        rate_range_id, from_km, to_km, rate, is_mtk = range_row
+
+        # Check if range frame exists, else create it
+        frame = None
+        for rf in self.range_frames:
+            if getattr(rf, 'rate_range_id', None) == rate_range_id:
+                frame = rf
+                break
+
+        if frame is None:
+            # Automatically create the range frame for this slab
+            frame = LabelFrame(self.range_container, text=f"Range Slab", padx=10, pady=10)
+            frame.pack(fill='x', padx=10, pady=5)
+            self.used_ranges.add(rate_range_id)
+            self.setup_range(frame, rate_range_id=rate_range_id)
+            # self.setup_range(frame, range_cb=None)  # We'll modify setup_range to support None
+            frame.rate_range_id = rate_range_id
+            frame.rate = rate
+            self.range_frames.append(frame)
+
+        # Now add dealer row into that range’s table
+        self.add_dealer_to_range(frame, dealer_id, name, place, distance, rate, is_mtk)
+    
+    def add_dealer_to_range(self, frame, dealer_id, name, place, km, rate, is_mtk):
+        """
+        Add dealer into slab:
+        - If slab was newly created (setup_range already made 1st row) → use that row.
+        - If slab exists → add a new dealer row.
+        No calculation here.
+        """
+
+        dealer_rows = frame.dealer_rows   # already created in setup_range()
+        dealer_map = frame.dealer_map     # created inside setup_range()
+
+        # ✅ If this slab already existed, create a new dealer row
+        if getattr(frame, "initialized", False):
+            frame.add_dealer_row()
+        else:
+            # First time setup_range is used: Do NOT create a new row
+            frame.initialized = True      # mark as initialized
+
+        # Get last row (either created just now, or the initial one from setup_range)
+        row = dealer_rows[-1]
+
+        # Build key as stored in dealer dropdown
+        key = f"{dealer_id} - {name} ({km}km)"
+
+        # ✅ Select dealer in combobox
+        if key in dealer_map:
+            row["dealer_cb"].set(key)
+
+        # ✅ Set dispatched-to text
+        row["despatched_entry"].delete(0, END)
+        row["despatched_entry"].insert(0, f"{name}, {place}")
+
+        # Save values in row dictionary (used later when saving to DB)
+        row.update({
+            "dealer_id": dealer_id,
+            "dealer_name": name,
+            "dealer_place": place,
+            "km": km,
+            "rate": rate,
+            "is_mtk": is_mtk,
+        })
 
 
     def load_existing_entry(self, destination_entry_id):
