@@ -130,6 +130,8 @@ class DestinationEntryPage:
         self.dealer_search_cb.bind('<Button-1>', lambda e: self.dealer_search_cb.event_generate('<Down>'))
         self.dealer_search_cb.bind('<Return>', lambda e: self.dealer_search_cb.event_generate('<Down>'))
         self.dealer_search_cb.grid(row=0, column=1, padx=5)
+        
+        self.destination_cb.bind("<<ComboboxSelected>>", self.load_dealers_for_destination)
 
         Button(dealer_select_frame, text="➕ Add Selected Dealer", command=self.add_dealer_by_search).grid(row=0, column=3, padx=5)
         
@@ -137,7 +139,7 @@ class DestinationEntryPage:
             dealer_select_frame,
             text="✖",
             width=3,
-            command=lambda: self.dealer_search_var.set("")
+            command=lambda: self.clear_dealer_search() 
         ).grid(row=0, column=2, padx=2)
 
         self.range_container = Frame(self.frame)
@@ -145,9 +147,17 @@ class DestinationEntryPage:
 
         self.load_destinations()
         self.load_entry_cache()
+        self.filter_dealers()
         self.save_button.pack(pady=10)
+        
+    def clear_dealer_search(self):
+        self.dealer_search_var.set("")
+
+        # Reload full dealer list again
+        self.filter_dealers()
+
     
-    def filter_dealers(self, event):
+    def filter_dealers(self, event=None):
         """Filter dealer combobox options based on user input."""
         
         # if no dealer_map yet, nothing to filter
@@ -695,6 +705,12 @@ class DestinationEntryPage:
             if hasattr(frame, 'dealer_map'):
                 self.refresh_dealers_for_frame(frame)
                 
+        # After loading destination and entry cache
+        selected = self.destination_cb.get()
+        if selected:
+            self.load_dealers_for_destination() 
+        self.filter_dealers()   # This will now work because dealer_map exists
+         
     def clear(self, stat=True):
         if self.editing_mode and stat:
             self.load_existing_entry(self.destination_entry_id)
@@ -767,7 +783,8 @@ class DestinationEntryPage:
         self.dealer_search_cb.focus_set()
 
         # 👇 Open the DEALER dropdown — not the destination one
-        self.frame.after(100, lambda: self.dealer_search_cb.event_generate('<Down>'))
+        if self.dealer_map:
+            self.frame.after(100, lambda: self.dealer_search_cb.event_generate('<Down>'))
         
         self.dealer_map_search = {
             f"{id} - {name} ({place}) [{distance} km]": (id, name, place, distance)
