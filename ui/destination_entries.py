@@ -76,6 +76,12 @@ class DestinationEntryPage:
         )''')
 
         self.build_ui()
+        
+    def get_next_mda_number(self):
+        self.c.execute("SELECT MAX(mda_number) FROM dealer_entry")  # table that stores dealer rows
+        result = self.c.fetchone()[0]
+        return (result + 1) if type(result) is int else 1
+
 
     def build_ui(self):
         top_row = Frame(self.frame)
@@ -120,36 +126,66 @@ class DestinationEntryPage:
 
         Button(form, text="+ Add Range", command=self.add_range_frame).grid(row=5, column=0, columnspan=2, pady=10)
         
+        # ---------------- Dealer Search Row ---------------- #
         dealer_select_frame = Frame(form)
         dealer_select_frame.grid(row=6, column=0, columnspan=2, pady=5)
 
         Label(dealer_select_frame, text="Search Dealer").grid(row=0, column=0, padx=5)
+
         self.dealer_search_var = StringVar()
         self.dealer_search_cb = ttk.Combobox(dealer_select_frame, textvariable=self.dealer_search_var, width=70)
         self.dealer_search_cb.bind('<KeyRelease>', self.filter_dealers)
         self.dealer_search_cb.bind('<Button-1>', lambda e: self.dealer_search_cb.event_generate('<Down>'))
         self.dealer_search_cb.bind('<Return>', lambda e: self.dealer_search_cb.event_generate('<Down>'))
         self.dealer_search_cb.grid(row=0, column=1, padx=5)
-        
-        self.destination_cb.bind("<<ComboboxSelected>>", self.load_dealers_for_destination)
 
-        Button(dealer_select_frame, text="➕ Add Selected Dealer", command=self.add_dealer_by_search).grid(row=0, column=3, padx=5)
-        
+        # ❌ Clear dealer search
         Button(
             dealer_select_frame,
             text="✖",
             width=3,
-            command=lambda: self.clear_dealer_search() 
-        ).grid(row=0, column=2, padx=2)
+            command=self.clear_dealer_search
+        ).grid(row=0, column=2, padx=3)
+
+        # ✅ MDA NUMBER entry
+        Label(dealer_select_frame, text="MDA No").grid(row=0, column=3, padx=5)
+        self.search_mda_entry = Entry(dealer_select_frame, width=15)
+        self.search_mda_entry.grid(row=0, column=4, padx=5)
+        
+        next_mda = self.get_next_mda_number()
+        self.search_mda_entry.insert(0, next_mda)
+        self.next_mda = next_mda
+
+
+        # ✅ DATE entry
+        Label(dealer_select_frame, text="Date").grid(row=0, column=5)
+        self.search_date_entry = DateEntry(
+            dealer_select_frame, width=15, date_pattern='dd-mm-yyyy',
+            background='darkblue', foreground='white', borderwidth=2
+        )
+        self.search_date_entry.grid(row=0, column=6, padx=5)
+
+        # ✅ BAGS entry
+        Label(dealer_select_frame, text="Bags").grid(row=0, column=7)
+        self.search_bags_entry = Entry(dealer_select_frame, width=6)
+        self.search_bags_entry.grid(row=0, column=8, padx=5)
+
+        # ➕ Add Selected Dealer
+        Button(
+            dealer_select_frame,
+            text="➕ Add",
+            width=8,
+            command=self.add_dealer_by_search
+        ).grid(row=0, column=9, padx=5)
 
         self.range_container = Frame(self.frame)
         self.range_container.pack(fill='both', expand=True)
-
+        
         self.load_destinations()
         self.load_entry_cache()
         self.filter_dealers()
         self.save_button.pack(pady=10)
-        
+                
     def clear_dealer_search(self):
         self.dealer_search_var.set("")
 
@@ -555,9 +591,13 @@ class DestinationEntryPage:
 
             calc_btn = Button(dealer_frame, text="Calc", command=calculate_row)
             calc_btn.grid(row=row_idx, column=8)
+            
+            row['calc_btn'] = calc_btn
 
             remove_btn = Button(dealer_frame, text="❌", command=remove_dealer_row)
             remove_btn.grid(row=row_idx, column=9)
+            
+            row['remove_btn'] = remove_btn
 
             dealer_rows.append(row)
 
@@ -798,18 +838,27 @@ class DestinationEntryPage:
             messagebox.showerror("Error", "Please select a valid dealer.")
             return
 
+        # ✅ Get user values from Search row
+        mda = self.search_mda_entry.get().strip()
+        date = self.search_date_entry.get()
+        bags = self.search_bags_entry.get().strip()
+
+        if not bags.isdigit():
+            messagebox.showerror("Error", "Enter valid Bags number.")
+            return
+
         dealer_id, name, place, distance = self.dealer_map_search[selected]
 
-        # Find rate range for dealer distance
-        self.c.execute("SELECT id, from_km, to_km, rate, is_mtk FROM rate_range WHERE ? BETWEEN from_km AND to_km", (distance,))
+        self.c.execute("SELECT id, from_km, to_km, rate, is_mtk FROM rate_range WHERE ? BETWEEN from_km AND to_km",
+                    (distance,))
         range_row = self.c.fetchone()
+
         if not range_row:
             messagebox.showerror("Error", f"No rate range found for {distance} km.")
             return
 
         rate_range_id, from_km, to_km, rate, is_mtk = range_row
 
-        # Check if range frame exists, else create it
         frame = None
         for rf in self.range_frames:
             if getattr(rf, 'rate_range_id', None) == rate_range_id:
@@ -817,60 +866,74 @@ class DestinationEntryPage:
                 break
 
         if frame is None:
-            # Automatically create the range frame for this slab
             frame = LabelFrame(self.range_container, text=f"Range Slab", padx=10, pady=10)
             frame.pack(fill='x', padx=10, pady=5)
             self.used_ranges.add(rate_range_id)
             self.setup_range(frame, rate_range_id=rate_range_id)
-            # self.setup_range(frame, range_cb=None)  # We'll modify setup_range to support None
             frame.rate_range_id = rate_range_id
             frame.rate = rate
             self.range_frames.append(frame)
 
-        # Now add dealer row into that range’s table
-        self.add_dealer_to_range(frame, dealer_id, name, place, distance, rate, is_mtk)
+        # ✅ Now pass inputs to row
+        self.add_dealer_to_range(frame, dealer_id, name, place, distance, rate, is_mtk, mda, date, bags)
+
+        # ✅ Clear the search row after add
+        self.clear_dealer_search()
+        self.next_mda += 1
+        self.search_mda_entry.delete(0, END)
+        self.search_mda_entry.insert(0, self.next_mda)
     
-    def add_dealer_to_range(self, frame, dealer_id, name, place, km, rate, is_mtk):
-        """
-        Add dealer into slab:
-        - If slab was newly created (setup_range already made 1st row) → use that row.
-        - If slab exists → add a new dealer row.
-        No calculation here.
-        """
+    def add_dealer_to_range(self, frame, dealer_id, name, place, km, rate, is_mtk, mda, date, bags):
 
-        dealer_rows = frame.dealer_rows   # already created in setup_range()
-        dealer_map = frame.dealer_map     # created inside setup_range()
+        dealer_rows = frame.dealer_rows
+        dealer_map = frame.dealer_map
 
-        # ✅ If this slab already existed, create a new dealer row
-        if getattr(frame, "initialized", False):
-            frame.add_dealer_row()
+        # Create a new row if not initialized
+        if not hasattr(frame, "initialized") or not frame.initialized:
+            frame.initialized = True
         else:
-            # First time setup_range is used: Do NOT create a new row
-            frame.initialized = True      # mark as initialized
+            frame.add_dealer_row()
 
-        # Get last row (either created just now, or the initial one from setup_range)
         row = dealer_rows[-1]
-
-        # Build key as stored in dealer dropdown
         key = f"{dealer_id} - {name} ({km}km)"
 
-        # ✅ Select dealer in combobox
+        # ✅ Fill dealer combo
         if key in dealer_map:
             row["dealer_cb"].set(key)
 
-        # ✅ Set dispatched-to text
+        # ✅ Fill Despatched To
         row["despatched_entry"].delete(0, END)
         row["despatched_entry"].insert(0, f"{name}, {place}")
 
-        # Save values in row dictionary (used later when saving to DB)
-        row.update({
-            "dealer_id": dealer_id,
-            "dealer_name": name,
-            "dealer_place": place,
-            "km": km,
-            "rate": rate,
-            "is_mtk": is_mtk,
-        })
+        # ✅ MDA
+        row["mda_entry"].delete(0, END)
+        row["mda_entry"].insert(0, mda)
+
+        # ✅ Date (Entry widget, so insert directly)
+        row["date_entry"].delete(0, END)
+        row["date_entry"].insert(0, date)
+
+        # ✅ Bags update
+        row["bags_entry"].delete(0, END)
+        row["bags_entry"].insert(0, bags)
+
+        # ✅ Update KM and Rate into row data (not labels)
+        row["km"] = km
+        row["rate"] = rate
+        row["is_mtk"] = is_mtk
+
+        # ✅ IMPORTANT: CALL THE CALC FUNCTION of THIS row
+        # (it is dynamically defined in setup_range() as: calculate_row())
+        if "result_lbl" in row and row.get("bags_entry"):
+            # trigger row calculation
+            try:
+                # invoke the Calc button directly
+                row['result_lbl'].after(50, lambda r=row: r['calc_btn'].invoke())
+            except:
+                pass
+
+        # ✅ After updating row calc, refresh totals
+        frame.update_totals()
 
     def load_existing_entry(self, destination_entry_id):
         self.clear(False)
