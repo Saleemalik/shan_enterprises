@@ -10,6 +10,7 @@ import os
 import json
 from tkcalendar import DateEntry
 from reportlab.lib.units import mm
+from reportlab.platypus import KeepTogether
 
 class DestinationEntryPage:
     def __init__(self, frame, home_frame, conn):
@@ -1159,9 +1160,7 @@ class DestinationEntryPage:
         usable_width = page_width - doc.leftMargin - doc.rightMargin
 
         for range_name, table_data in range_data:
-            elements.append(Paragraph(range_name, styles['CenterBold']))
-            elements.append(Spacer(1, 3))
-
+            
             # dynamic column widths across reduced width (e.g. 90% of usable width)
             shrink_factor = 0.98   # reduce table width to 90% of page
             target_width = usable_width * shrink_factor  
@@ -1198,7 +1197,11 @@ class DestinationEntryPage:
                 ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
             ]))
 
-            elements.append(table)
+            elements.append(KeepTogether([
+                Paragraph(range_name, styles['CenterBold']),
+                Spacer(1, 3),
+                table
+            ]))
             elements.append(Spacer(1, 6))
 
        
