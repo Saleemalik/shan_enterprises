@@ -1049,6 +1049,13 @@ class DestinationEntryPage:
         self.update_buttons_to_edit_mode()
 
     def print_entry(self):
+        styles = getSampleStyleSheet()
+        styles.add(ParagraphStyle(name='Small', fontSize=8, leading=10))
+        styles.add(ParagraphStyle(name='NormalBold', fontSize=10, leading=10,  fontName='Helvetica-Bold'))
+        styles.add(ParagraphStyle(name='TitleBold', fontSize=13, leading=14, fontName='Helvetica-Bold', alignment=0))
+        styles.add(ParagraphStyle(name='CustomNormal', fontSize=10, leading=12))
+        styles.add(ParagraphStyle(name='CenterBold', fontSize=10, fontName='Helvetica-Bold', alignment=1))
+
         if not self.editing_mode or not self.destination_entry_id:
             messagebox.showwarning("Error", "Please save the entry before printing.")
             return
@@ -1082,14 +1089,30 @@ class DestinationEntryPage:
                 FROM dealer_entry WHERE range_entry_id = ?
             """, (range_entry_id,))
             dealer_entries = self.c.fetchall()
+            
+            def trim_text(text, max_len=30):  # adjust length to what fits your column
+                if not text:
+                    return ""
+                return text if len(text) <= max_len else text[:max_len] + "…"
 
             table_data = [["SL NO", "Date", "MDA NO", "Description", "Despatched to", "Bag", "MT", "KM", "MTK", "Rate", "Amount", "Remarks"]]
             for idx, (_, despatched_to, km, no_bags, mt, mtk, amount, mda_number, entry_date, description, remarks) in enumerate(dealer_entries, 1):
                 table_data.append([
-                    str(idx), entry_date, mda_number, description, despatched_to,
-                    str(no_bags), f"{mt:.3f}", str(km), f"{mtk:.2f}", f"{rate:.2f}", f"{amount:.2f}", remarks or ''
-            ])
-
+                    str(idx),
+                    entry_date,
+                    mda_number,
+                    trim_text(description, 32),
+                    trim_text(despatched_to, 32),# ✅ trim Description
+                    # Paragraph(description or "", styles['CustomNormal']),      # ✅ wrap Description
+                    # Paragraph(despatched_to or "", styles['CustomNormal']),   # ✅ wrap Despatched To
+                    str(no_bags),
+                    f"{mt:.3f}",
+                    str(km),
+                    f"{mtk:.2f}",
+                    f"{rate:.2f}",
+                    f"{amount:.2f}",
+                    Paragraph(remarks or "", styles['CustomNormal'])          # optional: wrap Remarks
+                ])
             # Add total row
             self.c.execute("""
                 SELECT total_bags, total_mt, total_mtk, total_amount
@@ -1105,13 +1128,7 @@ class DestinationEntryPage:
         doc = SimpleDocTemplate(pdf_file, pagesize=landscape(A4), leftMargin=20, rightMargin=20, topMargin=20, bottomMargin=20)
         elements = []
 
-        styles = getSampleStyleSheet()
-        styles.add(ParagraphStyle(name='Small', fontSize=8, leading=10))
-        styles.add(ParagraphStyle(name='NormalBold', fontSize=10, leading=10,  fontName='Helvetica-Bold'))
-        styles.add(ParagraphStyle(name='TitleBold', fontSize=13, leading=14, fontName='Helvetica-Bold', alignment=0))
-        styles.add(ParagraphStyle(name='CustomNormal', fontSize=10, leading=12))
-        styles.add(ParagraphStyle(name='CenterBold', fontSize=10, fontName='Helvetica-Bold', alignment=1))
-
+        
         # LEFT COLUMN - Company Info
         left_column = [
             Paragraph("GSTIN: 32ACNFS 8060K1ZP", styles['Small']),
@@ -1157,27 +1174,28 @@ class DestinationEntryPage:
             col_widths = [w * scale for w in col_widths]
 
             table = Table(table_data, colWidths=col_widths, hAlign="CENTER")  # center table
-
             table.setStyle(TableStyle([
                 ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONT', (0, 1), (-1, -1), 'Helvetica'),
                 ('FONTSIZE', (0, 0), (-1, 0), 10.5),
-                ('FONTSIZE', (0, 0), (-1, -1), 9),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
+
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+
                 ('GRID', (0, 0), (-1, -1), 0.8, colors.black),
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('WORDWRAP', (3, 1), (4, -2), True),
+
                 ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
                 ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
                 ('ALIGN', (3, 1), (4, -2), 'LEFT'),
                 ('ALIGN', (11, 1), (11, -2), 'LEFT'),
-                ('LEADING', (0, 0), (-1, -1), 14),
 
                 ('LEFTPADDING', (0, 0), (-1, -1), 3),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 3),
                 ('TOPPADDING', (0, 0), (-1, -1), 4),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
 
-                # Footer row
                 ('FONTSIZE', (0, -1), (-1, -1), 9.5),
                 ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
                 ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
