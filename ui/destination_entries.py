@@ -9,7 +9,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import os
 import json
 from tkcalendar import DateEntry
-
+from reportlab.lib.units import mm
 
 class DestinationEntryPage:
     def __init__(self, frame, home_frame, conn):
@@ -1125,7 +1125,7 @@ class DestinationEntryPage:
 
         # Generate PDF
         pdf_file = "bill_report.pdf"
-        doc = SimpleDocTemplate(pdf_file, pagesize=landscape(A4), leftMargin=20, rightMargin=20, topMargin=20, bottomMargin=20)
+        doc = SimpleDocTemplate(pdf_file, pagesize=landscape(A4), leftMargin=20, rightMargin=20, topMargin=100, bottomMargin=80)
         elements = []
 
         
@@ -1146,10 +1146,7 @@ class DestinationEntryPage:
             Paragraph(f"Date: {date}", styles['CustomNormal']),
         ]
 
-        # Header
-        header_table = Table([[left_column, "", right_column]], colWidths=[480, 40, 280])
-        header_table.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP')]))
-        elements.append(header_table)
+        # elements.append(header_table)
         elements.append(Spacer(1, 12))
         elements.append(Paragraph(f"Bill No.: {bill_number},", styles['CustomNormal']))
         elements.append(Spacer(1, 6))
@@ -1204,24 +1201,49 @@ class DestinationEntryPage:
             elements.append(table)
             elements.append(Spacer(1, 6))
 
-        # Footer
-        footer_data = [[
-            Paragraph("Passed by", styles['CustomNormal']),
-            "",
-            Paragraph("Officer in charge", styles['CustomNormal']),
-            "",
-            Paragraph("Signature of contractor", styles['CustomNormal'])
-        ]]
-        footer_table = Table(footer_data, colWidths=[120, 140, 140, 140, 140])
-        footer_table.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ]))
+       
         elements.append(Spacer(1, 20))
-        elements.append(footer_table)
+        # elements.append(footer_table)
+        
 
-        doc.build(elements)
+        def draw_header_footer(canvas, doc):
+            canvas.saveState()
+
+            # --- HEADER ---
+            # Draw the header table here
+            header_table = Table(
+                [[left_column, "", right_column]],
+                colWidths=[480, 40, 280]
+            )
+            header_table.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP')]))
+
+            # drawOn(x, y) manually at top of page
+            w, h = header_table.wrap(doc.width, doc.topMargin)
+            header_table.drawOn(canvas, doc.leftMargin, doc.height + doc.topMargin - h + 50)
+
+            # --- FOOTER ---
+            footer_data = [[
+                Paragraph("Passed by", styles['CustomNormal']),
+                "",
+                Paragraph("Officer in charge", styles['CustomNormal']),
+                "",
+                Paragraph("Signature of contractor", styles['CustomNormal'])
+            ]]
+            footer_table = Table(footer_data, colWidths=[120, 140, 140, 140, 140])
+            footer_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ]))
+
+            w, h = footer_table.wrap(doc.width, doc.bottomMargin)
+            footer_table.drawOn(canvas, doc.leftMargin, 15 * mm)  # bottom offset
+
+            canvas.restoreState()
+
+
+        doc.build(elements, onFirstPage=draw_header_footer, onLaterPages=draw_header_footer)
+
 
         # Open PDF
         try:
