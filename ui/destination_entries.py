@@ -498,7 +498,7 @@ class DestinationEntryPage:
             row = {}
 
             dealer_var = StringVar()
-            dealer_cb = ttk.Combobox(dealer_frame, textvariable=dealer_var, values=list(dealer_map.keys()), state="customNormal", width=30)
+            dealer_cb = ttk.Combobox(dealer_frame, textvariable=dealer_var, values=list(dealer_map.keys()), state="customNormal", width=35)
             dealer_cb.grid(row=row_idx, column=0, padx=2, pady=2)
             row['dealer_cb'] = dealer_cb
 
@@ -879,7 +879,7 @@ class DestinationEntryPage:
 
         # ✅ Clear the search row after add
         self.clear_dealer_search()
-        self.next_mda += 1
+        self.next_mda = (int(mda) if mda.isnumeric() else self.next_mda) + 1
         self.search_mda_entry.delete(0, END)
         self.search_mda_entry.insert(0, self.next_mda)
     
